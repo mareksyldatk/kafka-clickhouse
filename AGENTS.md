@@ -29,3 +29,6 @@
 ## Security & Configuration Tips
 - Keep secrets out of repo: use `.env` only for non-sensitive defaults; mount secret files locally when auth is introduced.
 - Prefer explicit ports, topics, and volumes; avoid “magic defaults” so restarts remain predictable.
+
+## Further notes
+- Ignore contents of `docs/`
