@@ -11,5 +11,8 @@
 *.log
 __pycache__/
 
+# Local data mounts
+data/
+
 # Ensure contributor guide is tracked even if globally ignored
 !AGENTS.md

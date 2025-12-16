@@ -1,2 +1,26 @@
 # Base Docker Compose scaffold for the data pipeline; services are added incrementally.
-services: {}
+services:
+  kafka-broker:
+    image: apache/kafka:4.1.1
+    platform: linux/amd64
+    container_name: ${KAFKA_BROKER_CONTAINER_NAME:-kafka-broker}
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_BROKER_PORT:-9092}:9092"
+    environment:
+      - PATH=/opt/kafka/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      - KAFKA_KRAFT_CLUSTER_ID=${KAFKA_KRAFT_CLUSTER_ID:-8Zt6o8hOSRuY0rFBLv0BTA}
+      - KAFKA_NODE_ID=${KAFKA_BROKER_NODE_ID:-1}
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_LISTENERS=PLAINTEXT://:9093,CONTROLLER://:9094,EXTERNAL://:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${KAFKA_BROKER_CONTAINER_NAME:-kafka-broker}:9093,EXTERNAL://localhost:${KAFKA_BROKER_PORT:-9092}
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=${KAFKA_BROKER_NODE_ID:-1}@${KAFKA_BROKER_CONTAINER_NAME:-kafka-broker}:9094
+      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      - KAFKA_LOG_DIRS=/var/lib/kafka/data
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+    volumes:
+      - ./data/kafka:/var/lib/kafka/data
