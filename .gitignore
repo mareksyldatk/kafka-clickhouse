@@ -1,0 +1,15 @@
+# Local environment files (non-secret examples only should be committed)
+.env
+.env.local
+.env.*.local
+
+# OS/editor cruft
+.DS_Store
+.idea/
+
+# Logs and caches
+*.log
+__pycache__/
+
+# Ensure contributor guide is tracked even if globally ignored
+!AGENTS.md
