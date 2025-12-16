@@ -1,65 +1,19 @@
-# Kafka → ClickHouse (Local Data Pipeline)
+# Kafka → ClickHouse (Local Pipeline Scaffold)
 
-This repository contains a **step-by-step, Docker Compose–based local data pipeline** built incrementally.
+This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; nothing runs yet.
 
-The end goal is a **Kafka → ClickHouse** pipeline with:
+## Repository layout
+- `docker-compose.yml` — empty Compose file that will grow with each step.
+- `configs/` — mounted configuration files for services (empty placeholder).
+- `sql/` — ClickHouse schemas and setup scripts (empty placeholder).
+- `scripts/` — helper scripts for local workflows (empty placeholder).
 
-* explicit ingestion (Kafka Connect),
-* schema discipline (Schema Registry),
-* persistence and restart safety,
-* and later: authentication and least-privilege access.
+## How to use this scaffold
+1) Copy `.env.example` to `.env` when it is introduced; keep secrets out of version control.
+2) Add one service or configuration change per commit to keep changes reviewable.
+3) Document any new commands or smoke tests in `README.md` as the stack evolves.
 
-The stack is intentionally built **in small, reviewable steps** to avoid hidden coupling and “works by accident” setups.
-
----
-
-## Scope
-
-**In scope**
-
-* Local development only (Docker Compose)
-* Kafka, Schema Registry, Kafka Connect
-* ClickHouse as analytical sink
-* Explicit configuration and persistence
-* Reproducible startup and smoke tests
-
-**Out of scope**
-
-* Kubernetes
-* Production sizing and HA
-* Full TLS/mTLS (added later only if needed)
-* Application-level business logic
-
----
-
-## Repository structure
-
-```
-.
-├── docker-compose.yml     # Incrementally built Compose file
-├── .env.example           # Non-sensitive defaults only
-├── README.md              # This document
-├── configs/               # Mounted service configs (Kafka, Connect, ClickHouse)
-├── sql/                   # ClickHouse schemas and setup scripts
-└── scripts/               # Helper scripts (optional, documented)
-```
-
----
-
-## Design principles
-
-* **One step = one small, testable change**
-* **State is persistent by default**
-* **Config is mounted, not baked into images**
-* **Explicit over implicit** (topics, schemas, tables)
-* **Security added incrementally, not bolted on**
-
----
-
-## How to work with this repo
-
-* Each commit introduces **one clear deliverable**
-* The stack should be runnable and verifiable at every step
-* If something breaks, it should be obvious *which step caused it*
-
-This repository is meant to be read **commit-by-commit**, not just “used”.
+## Ground rules
+- Prefer mounted configs over baked images.
+- Keep stateful services on named volumes once they are added.
+- Make startup/verifications explicit with healthchecks and CLI smoke tests as components arrive.

@@ -1,0 +1,2 @@
+# Base Docker Compose scaffold for the data pipeline; services are added incrementally.
+services: {}
