@@ -31,8 +31,8 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
   - internal `kafka-broker:9093` (in-cluster), 
   - controller `9094`.
 - Data: 
-  - no persistence yet: broker state lives on the container filesystem;
-  - recreate the container to wipe broker state.
+  - persisted in a named Docker volume (`kafka_data`) so topics survive restarts;
+  - reset state with `docker compose down -v` (removes volumes).
 - Run: 
   - `docker compose up -d kafka-broker`
 - Health:
@@ -47,6 +47,9 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
     `docker compose exec -T kafka-broker kafka-console-producer.sh --bootstrap-server kafka-broker:9093 --topic smoke`
   - consume from the start (exits after reading 10 messages):  
     `docker compose exec -T kafka-broker kafka-console-consumer.sh --bootstrap-server kafka-broker:9093 --topic smoke --from-beginning --max-messages 10`
+  - verify persistence (topic survives restart):
+    `docker compose restart kafka-broker`
+    `docker compose exec kafka-broker kafka-topics.sh --bootstrap-server kafka-broker:9093 --list`
 
 ## Ground rules
 - Prefer mounted configs over baked images.
