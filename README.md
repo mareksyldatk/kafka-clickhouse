@@ -24,7 +24,6 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - Role: 
   - single Kafka broker in KRaft mode (no ZooKeeper),
   - image `apache/kafka:4.1.1`,
-  - container `${KAFKA_BROKER_CONTAINER_NAME}`,
   - uses `KAFKA_KRAFT_CLUSTER_ID` to format storage if the log directory is empty.
   - config uses the Apache Kafka Docker env var names (`KAFKA_PROCESS_ROLES`, `KAFKA_LISTENERS`, etc.).
 - Endpoints: 
@@ -32,13 +31,18 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
   - internal `kafka-broker:9093` (in-cluster), 
   - controller `9094`.
 - Data: 
-  - bind-mounted at `./data/kafka` to `/var/lib/kafka/data`;
-  - delete this folder to wipe broker state (the broker will re-format it with the configured cluster ID on next start).
+  - no persistence yet: broker state lives on the container filesystem;
+  - recreate the container to wipe broker state.
 - Run: 
   - `docker compose up -d kafka-broker`
+- Health:
+  - `docker compose ps` (look for `healthy` in the `STATE` column)
+  - `docker inspect "$(docker compose ps -q kafka-broker)" --format '{{json .State.Health}}'` (probe status and last output)
 - Smoke test:
-  - `docker compose exec kafka-broker kafka-topics.sh --bootstrap-server kafka-broker:9093 --create --topic smoke --replication-factor 1 --partitions 1`
-  - `docker compose exec kafka-broker kafka-topics.sh --bootstrap-server kafka-broker:9093 --list`
+  - create topic:  
+    `docker compose exec kafka-broker kafka-topics.sh --bootstrap-server kafka-broker:9093 --create --if-not-exists --topic smoke --replication-factor 1 --partitions 1`
+  - list topics:  
+    `docker compose exec kafka-broker kafka-topics.sh --bootstrap-server kafka-broker:9093 --list`
   - produce (type lines, end with Ctrl+D):  
     `docker compose exec -T kafka-broker kafka-console-producer.sh --bootstrap-server kafka-broker:9093 --topic smoke`
   - consume from the start (exits after reading 10 messages):  
