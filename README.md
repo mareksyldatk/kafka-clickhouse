@@ -51,6 +51,16 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
     `docker compose restart kafka-broker`
     `docker compose exec kafka-broker kafka-topics.sh --bootstrap-server kafka-broker:9093 --list`
 
+## Schema Registry
+- Role:
+  - schema registry service backed by Kafka (stores schemas in an internal Kafka topic),
+  - image `confluentinc/cp-schema-registry:8.0.3`,
+  - exposed on `http://localhost:8081`.
+- Run:
+  - `docker compose up -d schema-registry`
+- Smoke test (list subjects):
+  - `curl -s http://localhost:8081/subjects`
+
 ## Ground rules
 - Prefer mounted configs over baked images.
 - Keep stateful services on named volumes once they are added.

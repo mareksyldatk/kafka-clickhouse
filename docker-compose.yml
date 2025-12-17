@@ -1,4 +1,4 @@
-x-kafka-depends-on-healthy: &kafka_depends_on_healthy
+x-depends-on-kafka-healthy: &depends_on_kafka_healthy
   kafka-broker:
     condition: service_healthy
 
@@ -34,6 +34,18 @@ services:
       timeout: 3s
       retries: 12
       start_period: 60s
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:8.0.3
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on: *depends_on_kafka_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      - SCHEMA_REGISTRY_HOST_NAME=schema-registry
+      - SCHEMA_REGISTRY_LISTENERS=http://0.0.0.0:8081
+      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka-broker:9093
 
 volumes:
   kafka_data:
