@@ -60,6 +60,20 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
   - `docker compose up -d schema-registry`
 - Smoke test (list subjects):
   - `curl -s http://localhost:8081/subjects`
+- Sample schema + compatibility (no producers/consumers yet):
+  - set subject compatibility (example: BACKWARD):
+    `curl -s -X PUT -H 'Content-Type: application/vnd.schemaregistry.v1+json' --data '{"compatibility":"BACKWARD"}' http://localhost:8081/config/smoke-value`
+  - register a v1 schema (Avro):
+    `curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' --data '{"schema":"{\"type\":\"record\",\"name\":\"Smoke\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}"}' http://localhost:8081/subjects/smoke-value/versions`
+  - list versions:
+    `curl -s http://localhost:8081/subjects/smoke-value/versions`
+  - print the registered schema:
+    `curl -s http://localhost:8081/subjects/smoke-value/versions/latest`
+    `curl -s http://localhost:8081/subjects/smoke-value/versions/latest | jq -r .schema`
+  - check compatibility of a candidate schema against latest (adds a field with a default = backward compatible):
+    `curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' --data '{"schema":"{\"type\":\"record\",\"name\":\"Smoke\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"source\",\"type\":\"string\",\"default\":\"unknown\"}]}"}' http://localhost:8081/compatibility/subjects/smoke-value/versions/latest`
+  - register the v2 schema (extend the subject):
+    `curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' --data '{"schema":"{\"type\":\"record\",\"name\":\"Smoke\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"source\",\"type\":\"string\",\"default\":\"unknown\"}]}"}' http://localhost:8081/subjects/smoke-value/versions`
 
 ## Ground rules
 - Prefer mounted configs over baked images.
