@@ -1,11 +1,5 @@
 # STEP II — Add security without breaking everything
 
-### Incremental Roadmap (Codex Prompts + Rationale)
-
-Goal: introduce **auth + least privilege** in small, reversible commits, without changing the topology or forcing rewrites.
-
----
-
 ## Phase 1 — Kafka auth first (smallest secure win)
 
 ### Commit 1 — Decide local security model + document it
@@ -267,5 +261,3 @@ Document recommended local Docker resources.
 * ClickHouse has least-privilege users/roles
 * Secrets are mounted locally (not in repo)
 * Your original Step I pipeline still works end-to-end
-
-If you want to keep Step II super clean, the only “big decision” is: **SASL/PLAIN only** vs **SASL + TLS**. For local dev, SASL/PLAIN is usually the right tradeoff; you can add TLS as a later step if you truly need parity.

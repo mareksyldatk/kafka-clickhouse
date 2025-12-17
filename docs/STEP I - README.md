@@ -60,7 +60,7 @@ Keep configuration minimal and readable.
 
 * Smallest possible Kafka that actually runs
 * Proves Docker networking + port exposure
-* Avoids ZooKeeper complexity until Kafka itself is confirmed working
+* Avoids ZooKeeper complexity
 
 ---
 
@@ -99,65 +99,9 @@ Document how to verify persistence in the README.
 
 ---
 
-## Phase 2 — ZooKeeper-based Kafka (classic mode)
+## Phase 2 — Schema Registry (data contract layer)
 
-### Commit 6 — Add ZooKeeper alone
-
-**Prompt**
-
-```text
-Add a standalone ZooKeeper service to docker-compose.
-Do not modify Kafka yet.
-Add a basic healthcheck and minimal config.
-```
-
-**Why**
-
-* Isolates ZooKeeper as a component
-* Makes debugging trivial if it fails
-* Avoids Kafka+ZooKeeper breaking in the same commit
-
----
-
-### Commit 7 — Switch Kafka to ZooKeeper mode
-
-**Prompt**
-
-```text
-Switch Kafka configuration from KRaft mode to ZooKeeper mode.
-Remove KRaft-specific settings.
-Ensure Kafka connects correctly to ZooKeeper.
-Update README smoke test if needed.
-```
-
-**Why**
-
-* Controlled migration instead of “big bang”
-* Aligns with Schema Registry and Kafka Connect expectations
-* Confirms Kafka still behaves correctly with external coordination
-
----
-
-### Commit 8 — ZooKeeper persistence
-
-**Prompt**
-
-```text
-Add persistent volumes for ZooKeeper data and logs.
-Document restart behavior and cleanup instructions.
-```
-
-**Why**
-
-* Prevents subtle metadata loss on restart
-* Avoids “Kafka randomly broke” situations
-* Mirrors real-world operational expectations
-
----
-
-## Phase 3 — Schema Registry (data contract layer)
-
-### Commit 9 — Schema Registry service
+### Commit 6 — Schema Registry service
 
 **Prompt**
 
@@ -175,7 +119,7 @@ Add a simple README check to verify it is running (list subjects).
 
 ---
 
-### Commit 10 — Schema workflow documentation
+### Commit 7 — Schema workflow documentation
 
 **Prompt**
 
@@ -192,9 +136,9 @@ Do not add producers or consumers yet.
 
 ---
 
-## Phase 4 — ClickHouse (destination first)
+## Phase 3 — ClickHouse (destination first)
 
-### Commit 11 — ClickHouse service
+### Commit 8 — ClickHouse service
 
 **Prompt**
 
@@ -213,7 +157,7 @@ Keep config minimal.
 
 ---
 
-### Commit 12 — ClickHouse persistence
+### Commit 9 — ClickHouse persistence
 
 **Prompt**
 
@@ -230,7 +174,7 @@ Document how to verify data survives container restarts.
 
 ---
 
-### Commit 13 — Config mounting for ClickHouse
+### Commit 10 — Config mounting for ClickHouse
 
 **Prompt**
 
@@ -247,9 +191,9 @@ Include minimal example files and documentation.
 
 ---
 
-## Phase 5 — Kafka Connect (ingestion engine)
+## Phase 4 — Kafka Connect (ingestion engine)
 
-### Commit 14 — Kafka Connect worker
+### Commit 11 — Kafka Connect worker
 
 **Prompt**
 
@@ -267,7 +211,7 @@ Do not install any connectors yet.
 
 ---
 
-### Commit 15 — Connect internal topics
+### Commit 12 — Connect internal topics
 
 **Prompt**
 
@@ -284,7 +228,7 @@ Document their purpose in README.
 
 ---
 
-### Commit 16 — Connector installation strategy
+### Commit 13 — Connector installation strategy
 
 **Prompt**
 
@@ -302,9 +246,9 @@ Do not add ClickHouse connector yet.
 
 ---
 
-## Phase 6 — Kafka → ClickHouse (end-to-end)
+## Phase 5 — Kafka → ClickHouse (end-to-end)
 
-### Commit 17 — ClickHouse target table
+### Commit 14 — ClickHouse target table
 
 **Prompt**
 
@@ -321,7 +265,7 @@ Document how and when it should be created.
 
 ---
 
-### Commit 18 — ClickHouse Sink connector
+### Commit 15 — ClickHouse Sink connector
 
 **Prompt**
 
@@ -338,7 +282,7 @@ Provide a README command to deploy it via Connect REST API.
 
 ---
 
-### Commit 19 — End-to-end smoke test
+### Commit 16 — End-to-end smoke test
 
 **Prompt**
 
@@ -356,9 +300,9 @@ No code changes, documentation only.
 
 ---
 
-## Phase 7 — Stability polish (still Step I)
+## Phase 6 — Stability polish (still Step I)
 
-### Commit 20 — Log hygiene
+### Commit 17 — Log hygiene
 
 **Prompt**
 
@@ -375,7 +319,7 @@ Document where to look first when debugging.
 
 ---
 
-### Commit 21 — Startup ordering
+### Commit 18 — Startup ordering
 
 **Prompt**
 
@@ -392,7 +336,7 @@ Ensure the stack starts reliably with a single command.
 
 ---
 
-### Commit 22 — Operating manual
+### Commit 19 — Operating manual
 
 **Prompt**
 
@@ -408,3 +352,13 @@ common failure modes.
 * Reduces tribal knowledge
 * Makes the system usable by others
 * Locks in the mental model of the stack
+
+---
+
+## End state (after Step I)
+
+* Kafka runs in KRaft mode (no ZooKeeper) with healthchecks and documented CLI smoke tests
+* Kafka, ClickHouse, and (where needed) Connect internal state are persistent across restarts
+* Schema Registry and Kafka Connect are running and verified independently before end-to-end wiring
+* A minimal Kafka → Connect → ClickHouse pipeline works end-to-end with a repeatable smoke test
+* Startup ordering is health-based so `docker compose up` is deterministic
