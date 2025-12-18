@@ -345,6 +345,17 @@ python scripts/python/avro_consumer.py
 - Play UI (opens in browser; uses admin credentials in query params):
   [http://localhost:8123/play?user=admin&password=clickhouse](http://localhost:8123/play?user=admin&password=clickhouse) (update the URL if you change credentials)
 
+### Example table for Kafka ingestion
+- DDL: `sql/ddl/clickhouse_kafka_sink.sql` defines a simple `kafka_events` MergeTree table (id, source, ts, payload) to receive rows from Kafka.
+- When to create: after ClickHouse is up and before wiring a Kafka Connect sink; run once per environment.
+- How to create:
+```bash
+curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
+  'http://localhost:8123/?query='
+```
+- If your Kafka messages use different columns/types, edit `sql/ddl/clickhouse_kafka_sink.sql` accordingly, then rerun the command above.
+
 ## Ground rules
 - Prefer mounted configs over baked images.
 - Keep stateful services on named volumes once they are added.
