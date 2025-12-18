@@ -25,6 +25,7 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - Start with image rebuild + container recreation + fresh anonymous volumes: `scripts/docker_up.sh --recreate`
 - Stop the stack: `scripts/docker_down.sh`
 - Stop and remove volumes (including anonymous ones): `scripts/docker_down.sh --remove_volumes`
+- Setup Python virtualenv + deps (pyenv required): `scripts/setup_python.sh`
 
 ## Cluster topology
 ```
@@ -189,6 +190,28 @@ docker compose exec -T schema-registry kafka-avro-console-consumer \
 - Verify Schema Registry registered the subject:
 ```bash
 curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
+```
+
+## Python Avro producer
+### Setup
+- Create a pyenv virtualenv and install dependencies:
+```bash
+scripts/setup_python.sh
+pyenv activate kafka-clickhouse
+```
+
+### Run
+- Produce a single Avro record (defaults match the local stack):
+```bash
+python scripts/python/avro_producer.py
+```
+- Override defaults if needed:
+```bash
+BOOTSTRAP_SERVERS="localhost:19092,localhost:29092,localhost:39092" \
+SCHEMA_REGISTRY_URL="http://localhost:8081" \
+TOPIC="smoke_avro" \
+MESSAGE_ID="42" \
+python scripts/python/avro_producer.py
 ```
 
 ## Ground rules
