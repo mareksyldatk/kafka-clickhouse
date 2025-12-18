@@ -1,30 +1,185 @@
-x-depends-on-kafka-healthy: &depends_on_kafka_healthy
-  kafka-broker:
+x-depends-on-controllers-healthy: &depends_on_controllers_healthy
+  kafka-controller-1:
+    condition: service_healthy
+  kafka-controller-2:
+    condition: service_healthy
+  kafka-controller-3:
+    condition: service_healthy
+
+x-depends-on-brokers-healthy: &depends_on_brokers_healthy
+  kafka-broker-1:
+    condition: service_healthy
+  kafka-broker-2:
+    condition: service_healthy
+  kafka-broker-3:
     condition: service_healthy
 
 services:
-  kafka-broker:
+  kafka-controller-1:
     image: confluentinc/cp-kafka:7.7.7
     platform: linux/amd64
     restart: unless-stopped
-    ports:
-      - "${KAFKA_BROKER_PORT:-9092}:9092"
     environment:
-      - CLUSTER_ID=${CLUSTER_ID:?Set CLUSTER_ID in .env (generate via kafka-storage.sh random-uuid)}
-      - KAFKA_NODE_ID=1
-      - KAFKA_PROCESS_ROLES=broker,controller
-      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
-      - KAFKA_LISTENERS=PLAINTEXT://:9093,CONTROLLER://:9094,EXTERNAL://:9092
-      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka-broker:9093,EXTERNAL://localhost:${KAFKA_BROKER_PORT:-9092}
-      - KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka-broker:9094
-      - KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-      - KAFKA_LOG_DIRS=/var/lib/kafka/data
-      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
-      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
-      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+      CLUSTER_ID: ${CLUSTER_ID:?Set CLUSTER_ID in .env (generate via kafka-storage.sh random-uuid)}
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: CONTROLLER://:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
-      - kafka_data:/var/lib/kafka/data
+      - kafka_controller_1:/var/lib/kafka/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -ec 'echo > /dev/tcp/127.0.0.1/9094'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 60s
+
+  kafka-controller-2:
+    image: confluentinc/cp-kafka:7.7.7
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      CLUSTER_ID: ${CLUSTER_ID:?Set CLUSTER_ID in .env (generate via kafka-storage.sh random-uuid)}
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: CONTROLLER://:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka_controller_2:/var/lib/kafka/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -ec 'echo > /dev/tcp/127.0.0.1/9094'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 60s
+
+  kafka-controller-3:
+    image: confluentinc/cp-kafka:7.7.7
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      CLUSTER_ID: ${CLUSTER_ID:?Set CLUSTER_ID in .env (generate via kafka-storage.sh random-uuid)}
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENERS: CONTROLLER://:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka_controller_3:/var/lib/kafka/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -ec 'echo > /dev/tcp/127.0.0.1/9094'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 60s
+
+  kafka-broker-1:
+    image: confluentinc/cp-kafka:7.7.7
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on: *depends_on_controllers_healthy
+    ports:
+      - "19092:9092"
+    environment:
+      CLUSTER_ID: ${CLUSTER_ID:?Set CLUSTER_ID in .env (generate via kafka-storage.sh random-uuid)}
+      KAFKA_NODE_ID: 4
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-1:9093,EXTERNAL://localhost:19092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    volumes:
+      - kafka_broker_1:/var/lib/kafka/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -ec 'echo > /dev/tcp/127.0.0.1/9093'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 60s
+
+  kafka-broker-2:
+    image: confluentinc/cp-kafka:7.7.7
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on: *depends_on_controllers_healthy
+    ports:
+      - "29092:9092"
+    environment:
+      CLUSTER_ID: ${CLUSTER_ID:?Set CLUSTER_ID in .env (generate via kafka-storage.sh random-uuid)}
+      KAFKA_NODE_ID: 5
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-2:9093,EXTERNAL://localhost:29092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    volumes:
+      - kafka_broker_2:/var/lib/kafka/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - bash -ec 'echo > /dev/tcp/127.0.0.1/9093'
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 60s
+
+  kafka-broker-3:
+    image: confluentinc/cp-kafka:7.7.7
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on: *depends_on_controllers_healthy
+    ports:
+      - "39092:9092"
+    environment:
+      CLUSTER_ID: ${CLUSTER_ID:?Set CLUSTER_ID in .env (generate via kafka-storage.sh random-uuid)}
+      KAFKA_NODE_ID: 6
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-broker-3:9093,EXTERNAL://localhost:39092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    volumes:
+      - kafka_broker_3:/var/lib/kafka/data
     healthcheck:
       test:
         - CMD-SHELL
@@ -38,13 +193,18 @@ services:
     image: confluentinc/cp-schema-registry:7.7.7
     platform: linux/amd64
     restart: unless-stopped
-    depends_on: *depends_on_kafka_healthy
+    depends_on: *depends_on_brokers_healthy
     ports:
       - "8081:8081"
     environment:
-      - SCHEMA_REGISTRY_HOST_NAME=schema-registry
-      - SCHEMA_REGISTRY_LISTENERS=http://0.0.0.0:8081
-      - SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka-broker:9093
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-broker-1:9093,PLAINTEXT://kafka-broker-2:9093,PLAINTEXT://kafka-broker-3:9093
 
 volumes:
-  kafka_data:
+  kafka_broker_1:
+  kafka_broker_2:
+  kafka_broker_3:
+  kafka_controller_1:
+  kafka_controller_2:
+  kafka_controller_3:

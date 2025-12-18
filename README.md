@@ -1,15 +1,15 @@
 # Kafka → ClickHouse (Local Pipeline Scaffold)
 
-This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; nothing runs yet.
+This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; Kafka + Schema Registry are now running.
 
 ## Repository layout
-- `docker-compose.yml` — empty Compose file that will grow with each step.
+- `docker-compose.yml` — Compose stack that grows one service at a time; currently includes Kafka (KRaft) + Schema Registry.
 - `configs/` — mounted configuration files for services (empty placeholder).
 - `sql/` — ClickHouse schemas and setup scripts (empty placeholder).
 - `scripts/` — helper scripts for local workflows (empty placeholder).
 
 ## How to use this scaffold
-1) Copy `.env.example` to `.env` and adjust non-secret defaults (container names, ports) to avoid local conflicts.
+1) Copy `.env.example` to `.env` and set required values (e.g., `CLUSTER_ID`).
 2) Add one service or configuration change per commit to keep changes reviewable.
 3) Document any new commands or smoke tests in `README.md` as the stack evolves.
 
@@ -26,57 +26,72 @@ This repository starts as a minimal scaffold for an incremental Docker Compose�
 - Stop the stack: `scripts/docker_down.sh`
 - Stop and remove volumes (including anonymous ones): `scripts/docker_down.sh --remove_volumes`
 
-## Kafka broker (KRaft)
-- Role: 
-  - single Kafka broker in KRaft mode (no ZooKeeper),
+## Cluster topology
+```
+                 Kafka KRaft Cluster
+Controllers:  kafka-controller-1/2/3 (quorum on :9094)
+   Brokers:   kafka-broker-1/2/3 (clients on :9093, host :19092/:29092/:39092)
+ Schema Reg:  schema-registry (http://localhost:8081)
+```
+
+### Broker vs controller split
+- Controllers manage cluster metadata and leader elections (KRaft quorum).
+- Brokers handle client traffic (produce/consume) and store topic data.
+- This split mirrors production patterns while keeping the local stack small.
+
+## Kafka cluster (KRaft)
+- Role:
+  - three controller-only nodes + three broker-only nodes (no ZooKeeper),
   - image `confluentinc/cp-kafka:7.7.7`,
-  - uses `CLUSTER_ID` to format storage if the log directory is empty.
+  - uses `CLUSTER_ID` to format storage if the log directory is empty,
   - config uses the `cp-kafka` Docker env var names (`KAFKA_PROCESS_ROLES`, `KAFKA_LISTENERS`, etc.).
-- Endpoints: 
-  - host listener `localhost:${KAFKA_BROKER_PORT:-9092}` (external clients), 
-  - internal `kafka-broker:9093` (in-cluster), 
-  - controller `9094`.
-- Data: 
-  - persisted in a named Docker volume (`kafka_data`) so topics survive restarts;
+- Endpoints:
+  - brokers (host): `localhost:19092`, `localhost:29092`, `localhost:39092`,
+  - brokers (in-cluster): `kafka-broker-1:9093`, `kafka-broker-2:9093`, `kafka-broker-3:9093`,
+  - controllers (in-cluster): `kafka-controller-1:9094`, `kafka-controller-2:9094`, `kafka-controller-3:9094`.
+- Data:
+  - brokers and controllers persist state in named Docker volumes (one per node),
   - reset state with `docker compose down -v` (removes volumes).
 - Volumes visibility:
   - list this project’s named volumes: `docker volume ls --filter label=com.docker.compose.project=<project>`
   - note: some images may create anonymous volumes via Dockerfile `VOLUME`; those won’t appear in `docker-compose.yml` unless we explicitly mount over them.
 ### Run
-- `docker compose up -d kafka-broker`
+- `docker compose up -d`
 
 ### Health
 - `docker compose ps` (look for `healthy` in the `STATE` column)
-- `docker inspect "$(docker compose ps -q kafka-broker)" --format '{{json .State.Health}}'` (probe status and last output)
+- `docker inspect "$(docker compose ps -q kafka-broker-1)" --format '{{json .State.Health}}'` (probe status and last output)
 
 ### Smoke tests
 #### Topic lifecycle
 - Create the topic (idempotent if it already exists):
 ```bash
-docker compose exec kafka-broker kafka-topics \
-  --bootstrap-server kafka-broker:9093 \
+docker compose exec kafka-broker-1 kafka-topics \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --create \
   --if-not-exists \
   --topic smoke_kafka \
-  --replication-factor 1 \
+  --replication-factor 3 \
   --partitions 1
 ```
 - List topics (should include `smoke_kafka`):
 ```bash
-docker compose exec kafka-broker kafka-topics --bootstrap-server kafka-broker:9093 --list
+docker compose exec kafka-broker-1 kafka-topics \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --list
 ```
 
 #### Produce and consume
 - Produce (sends lines as messages; end with Ctrl+D):
 ```bash
-docker compose exec -T kafka-broker kafka-console-producer.sh \
-  --bootstrap-server kafka-broker:9093 \
+docker compose exec -T kafka-broker-1 kafka-console-producer \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --topic smoke_kafka
 ```
 - Consume from the start (reads historical messages; exits after 10):
 ```bash
-docker compose exec -T kafka-broker kafka-console-consumer.sh \
-  --bootstrap-server kafka-broker:9093 \
+docker compose exec -T kafka-broker-1 kafka-console-consumer \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --topic smoke_kafka \
   --from-beginning \
   --max-messages 10
@@ -85,8 +100,10 @@ docker compose exec -T kafka-broker kafka-console-consumer.sh \
 #### Persistence check
 - Restart the broker and list topics again (topic should still exist):
 ```bash
-docker compose restart kafka-broker
-docker compose exec kafka-broker kafka-topics --bootstrap-server kafka-broker:9093 --list
+docker compose restart kafka-broker-1
+docker compose exec kafka-broker-1 kafka-topics \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --list
 ```
 
 ## Schema Registry
@@ -140,18 +157,18 @@ curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
 #### Avro messages (optional)
 - Create the topic for Avro messages:
 ```bash
-docker compose exec kafka-broker kafka-topics \
-  --bootstrap-server kafka-broker:9093 \
+docker compose exec kafka-broker-1 kafka-topics \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --create \
   --if-not-exists \
   --topic smoke_avro \
-  --replication-factor 1 \
+  --replication-factor 3 \
   --partitions 1
 ```
 - Produce (auto-registers schema under `<topic>-value` and sends Avro):
 ```bash
 docker compose exec -T schema-registry kafka-avro-console-producer \
-  --bootstrap-server kafka-broker:9093 \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --topic smoke_avro \
   --property schema.registry.url=http://schema-registry:8081 \
   --property value.schema='{"type":"record","name":"SmokeAvro","namespace":"example","fields":[{"name":"id","type":"string"}]}'
@@ -163,7 +180,7 @@ docker compose exec -T schema-registry kafka-avro-console-producer \
 - Consume (prints decoded Avro records):
 ```bash
 docker compose exec -T schema-registry kafka-avro-console-consumer \
-  --bootstrap-server kafka-broker:9093 \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --topic smoke_avro \
   --from-beginning \
   --property schema.registry.url=http://schema-registry:8081 \
