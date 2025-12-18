@@ -5,7 +5,7 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/docker_up.sh [--recreate]
 
-Starts the stack in detached mode.
+Starts the stack (Kafka + Schema Registry + ClickHouse) in detached mode.
   --recreate  Rebuild images, force-recreate containers, and renew anonymous volumes.
 USAGE
 }

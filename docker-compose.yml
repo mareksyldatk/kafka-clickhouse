@@ -201,7 +201,18 @@ services:
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-broker-1:9093,PLAINTEXT://kafka-broker-2:9093,PLAINTEXT://kafka-broker-3:9093
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.11
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+
 volumes:
+  clickhouse_data:
   kafka_broker_1:
   kafka_broker_2:
   kafka_broker_3:

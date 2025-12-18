@@ -5,7 +5,7 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/docker_down.sh [--remove_volumes]
 
-Stops the stack.
+Stops the stack (Kafka + Schema Registry + ClickHouse).
   --remove_volumes  Remove named and anonymous volumes created by Compose.
 USAGE
 }

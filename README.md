@@ -1,12 +1,12 @@
 # Kafka → ClickHouse (Local Pipeline Scaffold)
 
-This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; Kafka + Schema Registry are now running.
+This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; Kafka, Schema Registry, and ClickHouse are now running.
 
 ## Repository layout
-- `docker-compose.yml` — Compose stack that grows one service at a time; currently includes Kafka (KRaft) + Schema Registry.
+- `docker-compose.yml` — Compose stack that grows one service at a time; currently includes Kafka (KRaft), Schema Registry, and ClickHouse.
 - `configs/` — mounted configuration files for services (empty placeholder).
 - `sql/` — ClickHouse schemas and setup scripts (empty placeholder).
-- `scripts/` — helper scripts for local workflows (empty placeholder).
+- `scripts/` — helper scripts for local workflows.
 
 ## How to use this scaffold
 1) Copy `.env.example` to `.env` and set required values (e.g., `CLUSTER_ID`).
@@ -27,7 +27,14 @@ This repository starts as a minimal scaffold for an incremental Docker Compose�
 - Stop and remove volumes (including anonymous ones): `scripts/docker_down.sh --remove_volumes`
 - Setup Python virtualenv + deps (pyenv required): `scripts/setup_python.sh`
 
-## Cluster topology
+## Endpoints reference
+- **Kafka brokers (host / client-facing):** `localhost:19092`, `localhost:29092`, `localhost:39092`
+- **Kafka brokers (in-cluster):** `kafka-broker-1:9093`, `kafka-broker-2:9093`, `kafka-broker-3:9093`
+- **Schema Registry:** [http://localhost:8081](http://localhost:8081) (in-cluster: [http://schema-registry:8081](http://schema-registry:8081))
+- **ClickHouse:** HTTP [http://localhost:8123](http://localhost:8123), native TCP `localhost:9000`
+
+## Kafka
+### Cluster topology
 ```
                  Kafka KRaft Cluster
 Controllers:  kafka-controller-1/2/3 (quorum on :9094)
@@ -35,12 +42,12 @@ Controllers:  kafka-controller-1/2/3 (quorum on :9094)
  Schema Reg:  schema-registry (http://localhost:8081)
 ```
 
-### Broker vs controller split
+#### Broker vs controller split
 - Controllers manage cluster metadata and leader elections (KRaft quorum).
 - Brokers handle client traffic (produce/consume) and store topic data.
 - This split mirrors production patterns while keeping the local stack small.
 
-## Kafka cluster (KRaft)
+### Kafka cluster (KRaft)
 - Role:
   - three controller-only nodes + three broker-only nodes (no ZooKeeper),
   - image `confluentinc/cp-kafka:7.7.7`,
@@ -56,15 +63,15 @@ Controllers:  kafka-controller-1/2/3 (quorum on :9094)
 - Volumes visibility:
   - list this project’s named volumes: `docker volume ls --filter label=com.docker.compose.project=<project>`
   - note: some images may create anonymous volumes via Dockerfile `VOLUME`; those won’t appear in `docker-compose.yml` unless we explicitly mount over them.
-### Run
+#### Run
 - `docker compose up -d`
 
-### Health
+#### Health
 - `docker compose ps` (look for `healthy` in the `STATE` column)
 - `docker inspect "$(docker compose ps -q kafka-broker-1)" --format '{{json .State.Health}}'` (probe status and last output)
 
-### Smoke tests
-#### Topic lifecycle
+#### Smoke tests
+##### Topic lifecycle
 - Create the topic (idempotent if it already exists):
 ```bash
 docker compose exec kafka-broker-1 kafka-topics \
@@ -82,7 +89,7 @@ docker compose exec kafka-broker-1 kafka-topics \
   --list
 ```
 
-#### Produce and consume
+##### Produce and consume
 - Produce (sends lines as messages; end with Ctrl+D):
 ```bash
 docker compose exec -T kafka-broker-1 kafka-console-producer \
@@ -98,7 +105,7 @@ docker compose exec -T kafka-broker-1 kafka-console-consumer \
   --max-messages 10
 ```
 
-#### Persistence check
+##### Persistence check
 - Restart the broker and list topics again (topic should still exist):
 ```bash
 docker compose restart kafka-broker-1
@@ -107,20 +114,20 @@ docker compose exec kafka-broker-1 kafka-topics \
   --list
 ```
 
-## Schema Registry
+### Schema Registry
 - Role:
   - schema registry service backed by Kafka (stores schemas in an internal Kafka topic),
   - image `confluentinc/cp-schema-registry:7.7.7`,
   - exposed on `http://localhost:8081`.
-### Run
+#### Run
 - `docker compose up -d schema-registry`
 
-### Smoke tests
-#### List subjects
+#### Smoke tests
+##### List subjects
 - List registered subjects (empty `[]` if none yet):
   `curl -s http://localhost:8081/subjects`
 
-#### Schema lifecycle (no producers/consumers yet)
+##### Schema lifecycle (no producers/consumers yet)
 - Set subject compatibility to BACKWARD (allows adding fields with defaults):
 ```bash
 curl -s -X PUT -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
@@ -155,7 +162,7 @@ curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   http://localhost:8081/subjects/smoke_avro-value/versions
 ```
 
-#### Avro messages (optional)
+##### Avro messages (optional)
 - Create the topic for Avro messages:
 ```bash
 docker compose exec kafka-broker-1 kafka-topics \
@@ -192,15 +199,15 @@ docker compose exec -T schema-registry kafka-avro-console-consumer \
 curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
 ```
 
-## Python Avro tools
-### Setup
+### Python Avro tools
+#### Setup
 - Create a pyenv virtualenv and install dependencies:
 ```bash
 scripts/setup_python.sh
 pyenv activate kafka-clickhouse
 ```
 
-### Producer
+#### Producer
 - Script: `scripts/python/avro_producer.py`
 - Run (defaults match the local stack):
 ```bash
@@ -215,7 +222,7 @@ MESSAGE_ID="42" \
 python scripts/python/avro_producer.py
 ```
 
-### Consumer
+#### Consumer
 - Script: `scripts/python/avro_consumer.py`
 - Run (defaults match the local stack):
 ```bash
@@ -230,6 +237,20 @@ GROUP_ID="smoke_avro_consumer" \
 MAX_MESSAGES="5" \
 python scripts/python/avro_consumer.py
 ```
+
+## ClickHouse
+- Role:
+  - single-node ClickHouse server (no integration yet),
+  - image `clickhouse/clickhouse-server:25.11`,
+  - persists data in a named Docker volume.
+- Endpoints:
+  - HTTP: `http://localhost:8123`,
+  - native TCP: `localhost:9000`.
+### Run
+- `docker compose up -d clickhouse`
+### Smoke tests
+- Ping the HTTP endpoint (returns `Ok.`):
+  `curl -s http://localhost:8123/ping`
 
 ## Ground rules
 - Prefer mounted configs over baked images.
