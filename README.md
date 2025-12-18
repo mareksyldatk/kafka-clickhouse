@@ -192,7 +192,7 @@ docker compose exec -T schema-registry kafka-avro-console-consumer \
 curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
 ```
 
-## Python Avro producer
+## Python Avro tools
 ### Setup
 - Create a pyenv virtualenv and install dependencies:
 ```bash
@@ -200,8 +200,9 @@ scripts/setup_python.sh
 pyenv activate kafka-clickhouse
 ```
 
-### Run
-- Produce a single Avro record (defaults match the local stack):
+### Producer
+- Script: `scripts/python/avro_producer.py`
+- Run (defaults match the local stack):
 ```bash
 python scripts/python/avro_producer.py
 ```
@@ -212,6 +213,22 @@ SCHEMA_REGISTRY_URL="http://localhost:8081" \
 TOPIC="smoke_avro" \
 MESSAGE_ID="42" \
 python scripts/python/avro_producer.py
+```
+
+### Consumer
+- Script: `scripts/python/avro_consumer.py`
+- Run (defaults match the local stack):
+```bash
+python scripts/python/avro_consumer.py
+```
+- Override defaults if needed:
+```bash
+BOOTSTRAP_SERVERS="localhost:19092,localhost:29092,localhost:39092" \
+SCHEMA_REGISTRY_URL="http://localhost:8081" \
+TOPIC="smoke_avro" \
+GROUP_ID="smoke_avro_consumer" \
+MAX_MESSAGES="5" \
+python scripts/python/avro_consumer.py
 ```
 
 ## Ground rules
