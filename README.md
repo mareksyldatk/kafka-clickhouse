@@ -21,7 +21,7 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - Keep secrets out of `.env` and this repo; inject them at runtime via your shell, a locally stored untracked file, or a secrets manager.
 
 ## Helper scripts
-- Start the stack: `scripts/docker_up.sh`
+- Start the stack (builds the custom Kafka Connect image first): `scripts/docker_up.sh`
 - Start with image rebuild + container recreation + fresh anonymous volumes: `scripts/docker_up.sh --recreate`
 - Stop the stack: `scripts/docker_down.sh`
 - Stop and remove volumes (including anonymous ones): `scripts/docker_down.sh --remove_volumes`
@@ -204,7 +204,7 @@ curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
 ## Kafka Connect
 - Role:
   - distributed Kafka Connect worker (no connectors installed yet),
-  - image `confluentinc/cp-kafka-connect:7.7.7`,
+  - image `kafka-clickhouse-kafka-connect:7.7.7` (built from `confluentinc/cp-kafka-connect:7.7.7` with plugins baked in),
   - internal topics replicated across brokers for configs/offsets/status.
 - Internal topics (restart-safe state stored in Kafka volumes):
   - `connect-configs`: connector/task configs, `partitions=1`, `replication-factor=3`, compacted.
@@ -238,6 +238,20 @@ docker compose exec kafka-broker-1 kafka-topics \
   --replication-factor 3 --partitions 5 \
   --config cleanup.policy=compact --config min.insync.replicas=2
 ```
+
+### Plugins (deterministic, image-based)
+- Approach: custom image (`docker/kafka-connect/Dockerfile`) built on top of `confluentinc/cp-kafka-connect:7.7.7` with plugins baked in. This pins connector versions in source control and avoids drift from host-mounted folders.
+- Add a plugin: download and unpack the connector into `docker/kafka-connect/plugins/<connector-name>/`.
+- Rebuild and restart Connect:
+```bash
+docker compose build kafka-connect
+docker compose up -d kafka-connect
+```
+- Confirm plugin shows up:
+```bash
+curl -s http://localhost:8083/connector-plugins | jq -r '.[].class'
+```
+- (No connectors installed yet; ClickHouse connector will be added later.)
 
 ### Python Avro tools
 #### Setup

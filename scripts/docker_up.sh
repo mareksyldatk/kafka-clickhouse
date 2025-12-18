@@ -30,7 +30,9 @@ case "${1:-}" in
 esac
 
 if $recreate; then
+  docker compose build kafka-connect
   docker compose up -d --build --force-recreate --renew-anon-volumes
 else
+  docker compose build kafka-connect
   docker compose up -d
 fi

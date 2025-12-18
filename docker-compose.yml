@@ -202,7 +202,9 @@ services:
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-broker-1:9093,PLAINTEXT://kafka-broker-2:9093,PLAINTEXT://kafka-broker-3:9093
 
   kafka-connect:
-    image: confluentinc/cp-kafka-connect:7.7.7
+    build:
+      context: ./docker/kafka-connect
+    image: kafka-clickhouse-kafka-connect:7.7.7
     platform: linux/amd64
     restart: unless-stopped
     depends_on: *depends_on_brokers_healthy
