@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<yandex>
+  <profiles>
+    <!-- Example custom profile; copy to a .xml file to activate -->
+    <local_dev>
+      <max_threads>4</max_threads>
+    </local_dev>
+  </profiles>
+</yandex>

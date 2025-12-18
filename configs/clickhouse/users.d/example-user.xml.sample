@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<yandex>
+  <users>
+    <!-- Example additional user; copy to a .xml file to activate -->
+    <analytics>
+      <password>analytics_password</password>
+      <networks>
+        <ip>::/0</ip>
+      </networks>
+      <profile>local_dev</profile>
+      <quota>default</quota>
+    </analytics>
+  </users>
+</yandex>

@@ -213,6 +213,8 @@ services:
       - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - ./configs/clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+      - ./configs/clickhouse/users.d:/etc/clickhouse-server/users.d:ro
 
 volumes:
   clickhouse_data:

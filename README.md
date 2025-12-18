@@ -249,6 +249,10 @@ python scripts/python/avro_consumer.py
 ### Credentials
 - HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`; defaults in `.env.example` are `default` / `clickhouse`)
   - Update `.env`, then `docker compose up -d clickhouse` to apply. Changing credentials later requires recreating the container.
+### Config overrides
+- Mounted read-only from `configs/clickhouse/config.d` and `configs/clickhouse/users.d` into the container.
+- Samples (inactive): `configs/clickhouse/config.d/example-profile.xml.sample`, `configs/clickhouse/users.d/example-user.xml.sample`.
+- To activate an override: copy a `.sample` file to a `.xml` filename in the same folder, edit as needed, then `docker compose restart clickhouse`.
 ### Run
 - `docker compose up -d clickhouse`
 ### Smoke tests
