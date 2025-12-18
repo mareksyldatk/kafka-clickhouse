@@ -206,6 +206,11 @@ curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
   - distributed Kafka Connect worker (no connectors installed yet),
   - image `confluentinc/cp-kafka-connect:7.7.7`,
   - internal topics replicated across brokers for configs/offsets/status.
+- Internal topics (restart-safe state stored in Kafka volumes):
+  - `connect-configs`: connector/task configs, `partitions=1`, `replication-factor=3`, compacted.
+  - `connect-offsets`: source offsets, `partitions=25`, `replication-factor=3`, compacted.
+  - `connect-status`: connector/task status, `partitions=5`, `replication-factor=3`, compacted.
+  - Connect auto-creates these when topic auto-creation is enabled; if you disable auto-creation, create them once with the commands below and they will persist via broker volumes.
 - Endpoints:
   - REST: `http://localhost:8083` (in-cluster: `http://kafka-connect:8083`)
 ### Run
@@ -215,6 +220,24 @@ curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
   `curl -s http://localhost:8083/connectors`
 - Verify Connect worker status:
   `curl -s http://localhost:8083/ | jq`
+- (Optional) Pre-create the internal topics if topic auto-creation is disabled:
+```bash
+docker compose exec kafka-broker-1 kafka-topics \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --create --if-not-exists --topic connect-configs \
+  --replication-factor 3 --partitions 1 \
+  --config cleanup.policy=compact --config min.insync.replicas=2
+docker compose exec kafka-broker-1 kafka-topics \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --create --if-not-exists --topic connect-offsets \
+  --replication-factor 3 --partitions 25 \
+  --config cleanup.policy=compact --config min.insync.replicas=2
+docker compose exec kafka-broker-1 kafka-topics \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --create --if-not-exists --topic connect-status \
+  --replication-factor 3 --partitions 5 \
+  --config cleanup.policy=compact --config min.insync.replicas=2
+```
 
 ### Python Avro tools
 #### Setup
