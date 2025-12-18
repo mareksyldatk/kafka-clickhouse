@@ -31,6 +31,7 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - **Kafka brokers (host / client-facing):** `localhost:19092`, `localhost:29092`, `localhost:39092`
 - **Kafka brokers (in-cluster):** `kafka-broker-1:9093`, `kafka-broker-2:9093`, `kafka-broker-3:9093`
 - **Schema Registry:** [http://localhost:8081](http://localhost:8081) (in-cluster: [http://schema-registry:8081](http://schema-registry:8081))
+- **Kafka Connect REST:** [http://localhost:8083](http://localhost:8083) (in-cluster: [http://kafka-connect:8083](http://kafka-connect:8083))
 - **ClickHouse:** HTTP [http://localhost:8123](http://localhost:8123), native TCP `localhost:9000`
 
 ## Kafka
@@ -40,6 +41,7 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 Controllers:  kafka-controller-1/2/3 (quorum on :9094)
    Brokers:   kafka-broker-1/2/3 (clients on :9093, host :19092/:29092/:39092)
  Schema Reg:  schema-registry (http://localhost:8081)
+      Connect: kafka-connect (REST http://localhost:8083)
 ```
 
 #### Broker vs controller split
@@ -198,6 +200,21 @@ docker compose exec -T schema-registry kafka-avro-console-consumer \
 ```bash
 curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
 ```
+
+## Kafka Connect
+- Role:
+  - distributed Kafka Connect worker (no connectors installed yet),
+  - image `confluentinc/cp-kafka-connect:7.7.7`,
+  - internal topics replicated across brokers for configs/offsets/status.
+- Endpoints:
+  - REST: `http://localhost:8083` (in-cluster: `http://kafka-connect:8083`)
+### Run
+- `docker compose up -d kafka-connect`
+### Smoke tests
+- Check connectors list (should be `[]` initially):
+  `curl -s http://localhost:8083/connectors`
+- Verify Connect worker status:
+  `curl -s http://localhost:8083/ | jq`
 
 ### Python Avro tools
 #### Setup
