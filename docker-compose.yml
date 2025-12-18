@@ -4,14 +4,13 @@ x-depends-on-kafka-healthy: &depends_on_kafka_healthy
 
 services:
   kafka-broker:
-    image: apache/kafka:4.1.1
+    image: confluentinc/cp-kafka:7.7.7
     platform: linux/amd64
     restart: unless-stopped
     ports:
       - "${KAFKA_BROKER_PORT:-9092}:9092"
     environment:
-      - PATH=/opt/kafka/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-      - KAFKA_KRAFT_CLUSTER_ID=${KAFKA_KRAFT_CLUSTER_ID:-8Zt6o8hOSRuY0rFBLv0BTA}
+      - CLUSTER_ID=${CLUSTER_ID:?Set CLUSTER_ID in .env (generate via kafka-storage.sh random-uuid)}
       - KAFKA_NODE_ID=1
       - KAFKA_PROCESS_ROLES=broker,controller
       - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
@@ -36,7 +35,7 @@ services:
       start_period: 60s
 
   schema-registry:
-    image: confluentinc/cp-schema-registry:8.0.3
+    image: confluentinc/cp-schema-registry:7.7.7
     platform: linux/amd64
     restart: unless-stopped
     depends_on: *depends_on_kafka_healthy
