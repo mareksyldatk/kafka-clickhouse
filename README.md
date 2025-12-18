@@ -247,34 +247,49 @@ python scripts/python/avro_consumer.py
   - HTTP: `http://localhost:8123`,
 - native TCP: `localhost:9000`.
 ### Credentials
-- HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`; defaults in `.env.example` are `default` / `clickhouse`)
+- HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`; defaults in `.env.example` are `admin` / `clickhouse`)
   - Update `.env`, then `docker compose up -d clickhouse` to apply. Changing credentials later requires recreating the container.
+  - Stock `default` user is removed; `configs/clickhouse/users.d/default-user.xml` creates `admin` from env vars. Add your own users as overrides in `configs/clickhouse/users.d/` if needed.
 ### Config overrides
-- Mounted read-only from `configs/clickhouse/config.d` and `configs/clickhouse/users.d` into the container.
+- Mounted as additional include paths (defaults remain intact):
+  - `configs/clickhouse/config.d` → `/etc/clickhouse-server/config.d`
+  - `configs/clickhouse/users.d`   → `/etc/clickhouse-server/users.d`
+- ClickHouse config layout docs: https://clickhouse.com/docs/operations/configuration-files
+- Active overrides:
+  - `configs/clickhouse/config.d/listen.xml` binds HTTP/native to all interfaces for local access.
 - Samples (inactive): `configs/clickhouse/config.d/example-profile.xml.sample`, `configs/clickhouse/users.d/example-user.xml.sample`.
-- To activate an override: copy a `.sample` file to a `.xml` filename in the same folder, edit as needed, then `docker compose restart clickhouse`.
+- Default admin user for local dev lives in `configs/clickhouse/users.d/default-user.xml` (matches `.env.example` credentials).
+- To activate or add overrides: place a `.xml` file in the folders above, then `docker compose restart clickhouse`.
 ### Run
 - `docker compose up -d clickhouse`
 ### Smoke tests
 - Ping the HTTP endpoint (returns `Ok.`):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}" http://localhost:8123/ping
+  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" http://localhost:8123/ping
+  ```
+- Healthcheck note: the container reports healthy after `clickhouse-client --query "SELECT 1"` succeeds (it may take a few seconds on first start).
+- Confirm effective user/profile (verifies overrides are applied):
+  ```bash
+  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+    'http://localhost:8123/?query=SELECT+currentUser(),+currentProfiles()'
   ```
 - Verify persistence across restarts (uses the named volume):
   ```bash
   # create a test table and write one row
-  curl -sS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
     -X POST -d '' 'http://localhost:8123/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_clickhouse(id+UInt32)+ENGINE=MergeTree()+ORDER+BY+id'
-  curl -sS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
     -X POST -d '' 'http://localhost:8123/?query=INSERT+INTO+smoke_clickhouse+VALUES(1)'
 
   # restart the container
   docker compose restart clickhouse
 
   # confirm the row persists
-  curl -sS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
     'http://localhost:8123/?query=SELECT+*+FROM+smoke_clickhouse'
   ```
+- Play UI (opens in browser; uses admin credentials in query params):
+  [http://localhost:8123/play?user=admin&password=clickhouse](http://localhost:8123/play?user=admin&password=clickhouse) (update the URL if you change credentials)
 
 ## Ground rules
 - Prefer mounted configs over baked images.

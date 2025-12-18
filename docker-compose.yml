@@ -213,8 +213,23 @@ services:
       - "9000:9000"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
-      - ./configs/clickhouse/config.d:/etc/clickhouse-server/config.d:ro
-      - ./configs/clickhouse/users.d:/etc/clickhouse-server/users.d:ro
+      - ./configs/clickhouse/config.d:/etc/clickhouse-server/config.d
+      - ./configs/clickhouse/users.d:/etc/clickhouse-server/users.d
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          clickhouse-client
+          --host 127.0.0.1
+          --port 9000
+          --user "$CLICKHOUSE_USER"
+          --password "$CLICKHOUSE_PASSWORD"
+          --query "SELECT 1"
+          --format Null
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
 
 volumes:
   clickhouse_data:
