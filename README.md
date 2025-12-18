@@ -242,15 +242,35 @@ python scripts/python/avro_consumer.py
 - Role:
   - single-node ClickHouse server (no integration yet),
   - image `clickhouse/clickhouse-server:25.11`,
-  - persists data in a named Docker volume.
+  - persists data in a named Docker volume (`clickhouse_data`), no external operational DB required.
 - Endpoints:
   - HTTP: `http://localhost:8123`,
-  - native TCP: `localhost:9000`.
+- native TCP: `localhost:9000`.
+### Credentials
+- HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`; defaults in `.env.example` are `default` / `clickhouse`)
+  - Update `.env`, then `docker compose up -d clickhouse` to apply. Changing credentials later requires recreating the container.
 ### Run
 - `docker compose up -d clickhouse`
 ### Smoke tests
 - Ping the HTTP endpoint (returns `Ok.`):
-  `curl -s http://localhost:8123/ping`
+  ```bash
+  curl -sS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}" http://localhost:8123/ping
+  ```
+- Verify persistence across restarts (uses the named volume):
+  ```bash
+  # create a test table and write one row
+  curl -sS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+    -X POST -d '' 'http://localhost:8123/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_clickhouse(id+UInt32)+ENGINE=MergeTree()+ORDER+BY+id'
+  curl -sS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+    -X POST -d '' 'http://localhost:8123/?query=INSERT+INTO+smoke_clickhouse+VALUES(1)'
+
+  # restart the container
+  docker compose restart clickhouse
+
+  # confirm the row persists
+  curl -sS -u "${CLICKHOUSE_USER:-default}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+    'http://localhost:8123/?query=SELECT+*+FROM+smoke_clickhouse'
+  ```
 
 ## Ground rules
 - Prefer mounted configs over baked images.

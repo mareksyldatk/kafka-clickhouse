@@ -205,6 +205,9 @@ services:
     image: clickhouse/clickhouse-server:25.11
     platform: linux/amd64
     restart: unless-stopped
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?Set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env}
     ports:
       - "8123:8123"
       - "9000:9000"
