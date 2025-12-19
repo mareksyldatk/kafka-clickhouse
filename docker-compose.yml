@@ -200,6 +200,14 @@ services:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-broker-1:9093,PLAINTEXT://kafka-broker-2:9093,PLAINTEXT://kafka-broker-3:9093
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:8081/subjects || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   kafka-connect:
     build:
@@ -207,7 +215,10 @@ services:
     image: kafka-clickhouse-kafka-connect:7.7.7
     platform: linux/amd64
     restart: unless-stopped
-    depends_on: *depends_on_brokers_healthy
+    depends_on:
+      <<: *depends_on_brokers_healthy
+      schema-registry:
+        condition: service_healthy
     ports:
       - "8083:8083"
     environment:

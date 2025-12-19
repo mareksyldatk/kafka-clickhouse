@@ -27,6 +27,7 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - Stop the stack: `scripts/docker_down.sh`
 - Stop and remove volumes (including anonymous ones): `scripts/docker_down.sh --remove_volumes`
 - Setup Python virtualenv + deps (pyenv required): `scripts/setup_python.sh`
+- The stack uses healthchecks + `depends_on` so `scripts/docker_up.sh` (or `docker compose up -d`) brings all services up in a safe order.
 
 ## Endpoints reference
 - **Kafka brokers (host / client-facing):** `localhost:19092`, `localhost:29092`, `localhost:39092`
@@ -132,6 +133,7 @@ docker compose exec kafka-broker-1 kafka-topics \
   - schema registry service backed by Kafka (stores schemas in an internal Kafka topic),
   - image `confluentinc/cp-schema-registry:7.7.7`,
   - exposed on `http://localhost:8081`.
+- Health: Compose waits for `/subjects` to respond before starting Kafka Connect (healthcheck is built-in).
 #### Run
 - `docker compose up -d schema-registry`
 
@@ -457,6 +459,8 @@ docker compose exec -T schema-registry kafka-avro-console-producer \
 {"id":3,"source":"smoke","ts":"2025-12-18T00:00:02Z","payload":"foo"}
 {"id":4,"source":"smoke","ts":"2025-12-18T00:00:03Z","payload":"bar"}
 {"id":5,"source":"smoke","ts":"2025-12-18T00:00:04Z","payload":"baz"}
+{"id":6,"source":"smoke","ts":"2025-12-18T00:00:05Z","payload":"skibidi"}
+
 ```
 - Verify rows landed in ClickHouse:
 ```bash
