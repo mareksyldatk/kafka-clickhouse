@@ -21,13 +21,14 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - `CLUSTER_ID` is required for KRaft (the broker uses it to format storage on first start); generate one with `docker run --rm confluentinc/cp-kafka:7.7.7 kafka-storage.sh random-uuid`.
 - Keep secrets out of `.env` and this repo; inject them at runtime via your shell, a locally stored untracked file, or a secrets manager.
 
-## Helper scripts
-- Start the stack (builds the custom Kafka Connect image first): `scripts/docker_up.sh`
-- Start with image rebuild + container recreation + fresh anonymous volumes: `scripts/docker_up.sh --recreate`
-- Stop the stack: `scripts/docker_down.sh`
-- Stop and remove volumes (including anonymous ones): `scripts/docker_down.sh --remove_volumes`
-- Setup Python virtualenv + deps (pyenv required): `scripts/setup_python.sh`
-- The stack uses healthchecks + `depends_on` so `scripts/docker_up.sh` (or `docker compose up -d`) brings all services up in a safe order.
+## Day-to-day ops
+- Start stack (builds Kafka Connect image first): `scripts/docker_up.sh`
+- Start fresh (rebuild + recreate containers + fresh anonymous volumes): `scripts/docker_up.sh --recreate`
+- Stop stack: `scripts/docker_down.sh`
+- Stop and remove all volumes (named + anonymous): `scripts/docker_down.sh --remove_volumes`
+- Quick health: `docker compose ps` and `docker inspect "$(docker compose ps -q <svc>)" --format '{{json .State.Health}}'`
+- Logs: `docker compose logs -f kafka-broker-1` (Kafka at WARN), `kafka-connect` (INFO), `schema-registry`, `clickhouse-1`/`clickhouse-2` (warning)
+- Setup Python virtualenv + deps (pyenv): `scripts/setup_python.sh`
 
 ## Logs & debugging
 - Kafka brokers/controllers: `docker compose logs -f kafka-broker-1` (repeat per node). Root log level is `WARN` to keep noise low; switch to `INFO` temporarily by exporting `KAFKA_LOG4J_ROOT_LOGLEVEL=INFO` before `docker compose up` if you need more detail.
@@ -91,6 +92,7 @@ Controllers:  kafka-controller-1/2/3 (quorum on :9094)
 #### Health
 - `docker compose ps` (look for `healthy` in the `STATE` column)
 - `docker inspect "$(docker compose ps -q kafka-broker-1)" --format '{{json .State.Health}}'` (probe status and last output)
+- Logs (WARN by default): `docker compose logs -f kafka-broker-1` (repeat per node); set `KAFKA_LOG4J_ROOT_LOGLEVEL=INFO` if you need more detail, then restart.
 
 #### Smoke tests
 ##### Topic lifecycle
@@ -144,6 +146,7 @@ docker compose exec kafka-broker-1 kafka-topics \
 - Health: Compose waits for `/subjects` to respond before starting Kafka Connect (healthcheck is built-in).
 #### Run
 - `docker compose up -d schema-registry`
+- Logs: `docker compose logs -f schema-registry`
 
 #### Smoke tests
 ##### List subjects
@@ -237,6 +240,7 @@ curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
   - REST: `http://localhost:8083` (in-cluster: `http://kafka-connect:8083`)
 ### Run
 - `docker compose up -d kafka-connect`
+- Logs (INFO): `docker compose logs -f kafka-connect`
 ### Smoke tests
 - Check connectors list (should be `[]` initially):
   `curl -s http://localhost:8083/connectors`
@@ -383,6 +387,7 @@ python scripts/python/avro_consumer.py
   - `docker compose rm -sf clickhouse-keeper`
   - optional reset if you can discard data: `docker volume rm kafka-clickhouse_clickhouse_keeper_data`
   - `docker compose up -d clickhouse-keeper`
+- Logs (warning): `docker compose logs -f clickhouse-1` (and `clickhouse-2`); server logs also live in `/var/log/clickhouse-server/` inside the container.
 ### Smoke tests
 - Ping via HAProxy (returns `Ok.`):
   ```bash
@@ -486,3 +491,13 @@ curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
 - Prefer mounted configs over baked images.
 - Keep stateful services on named volumes once they are added.
 - Make startup/verifications explicit with healthchecks and CLI smoke tests as components arrive.
+
+## Common failure modes (quick triage)
+- Brokers/controllers unhealthy: ensure `CLUSTER_ID` is set in `.env`, volumes arenâ€™t from an old incompatible run, and check `docker compose logs kafka-controller-*`.
+- Schema Registry unhealthy: brokers must be healthy/reachable; tail `docker compose logs schema-registry`.
+- Kafka Connect task FAILED:
+  - `Connection to ClickHouse is not active`: check ClickHouse/HAProxy health, credentials/port in connector config, and that the target table exists.
+  - `Missing required config`: fix connector JSON and re-`PUT`.
+- ClickHouse Keeper errors / `Coordination::Exception`: restart keeper first, then clickhouse-1/2; ensure keeper listens on `0.0.0.0:9181`; drop keeper/CH volumes only if you can discard state.
+- Avro serialization errors: schema mismatch; verify the registered schema and the payload shape in producers.
+- No rows in ClickHouse: confirm connector status (`/connectors/<name>/status`), topic has data, table exists ON CLUSTER, and queries use the right endpoint (`http://localhost:18123`).
