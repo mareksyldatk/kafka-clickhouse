@@ -35,6 +35,12 @@ This repository starts as a minimal scaffold for an incremental Docker Compose�
 - **Kafka Connect REST:** [http://localhost:8083](http://localhost:8083) (in-cluster: [http://kafka-connect:8083](http://kafka-connect:8083))
 - **ClickHouse:** HTTP [http://localhost:8123](http://localhost:8123), native TCP `localhost:9000`
 
+## Stack at a glance
+- Kafka (KRaft): 3 controllers + 3 brokers, client ports exposed on localhost.
+- Schema Registry: backed by Kafka, reachable at `http://localhost:8081`.
+- Kafka Connect: custom image; plugins baked from `docker/kafka-connect/plugins/`.
+- ClickHouse: single node with a named data volume; target for the ClickHouse sink connector.
+
 ## Kafka
 ### Cluster topology
 ```
@@ -205,7 +211,7 @@ curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
 ## Kafka Connect
 - Role:
   - distributed Kafka Connect worker (no connectors installed yet),
-  - image `kafka-clickhouse-kafka-connect:7.7.7` (built from `confluentinc/cp-kafka-connect:7.7.7`; plugins are baked in from local `docker/kafka-connect/plugins/` when present),
+  - image `kafka-clickhouse-kafka-connect:7.7.7` (built from `confluentinc/cp-kafka-connect:7.7.7`; plugins are baked in from local `docker/kafka-connect/plugins/` when present), sample ClickHouse sink config provided.
   - internal topics replicated across brokers for configs/offsets/status.
 - Internal topics (restart-safe state stored in Kafka volumes):
   - `connect-configs`: connector/task configs, `partitions=1`, `replication-factor=3`, compacted.
@@ -280,54 +286,6 @@ curl -s -X PUT -H "Content-Type: application/json" \
 curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq
 ```
 
-### End-to-end smoke test: Schema Registry → Kafka → ClickHouse (Avro)
-- Prereqs: ClickHouse table exists (`sql/ddl/clickhouse_kafka_sink.sql`), ClickHouse sink connector is RUNNING, Schema Registry up. The bundled connector config already uses Avro converters.
-- Config is `PUT`:
-```bash
-curl -s -X PUT -H "Content-Type: application/json" \
-  --data @configs/connect/clickhouse-sink.json \
-  http://localhost:8083/connectors/clickhouse-sink/config | jq
-```
-- Register the Avro schema for the topic:
-```bash
-curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
-  --data '{"schema":"{\"type\":\"record\",\"name\":\"KafkaEvent\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"long\"},{\"name\":\"source\",\"type\":\"string\"},{\"name\":\"ts\",\"type\":\"string\"},{\"name\":\"payload\",\"type\":\"string\"}]}"}' \
-  http://localhost:8081/subjects/kafka_events-value/versions
-```
-- Ensure the Kafka topic exists:
-```bash
-docker compose exec kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --create --if-not-exists --topic kafka_events \
-  --replication-factor 3 --partitions 1
-```
-- Produce Avro messages (schema is registered; value converter is Avro):
-```bash
-docker compose exec -T schema-registry kafka-avro-console-producer \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic kafka_events \
-  --property schema.registry.url=http://schema-registry:8081 \
-  --property value.schema='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}'
-```
-- Type a few records (one per line), then end with Ctrl+D:
-```json
-{"id":1,"source":"smoke","ts":"2025-12-18T00:00:00Z","payload":"hello"}
-{"id":2,"source":"smoke","ts":"2025-12-18T00:00:01Z","payload":"world"}
-{"id":3,"source":"smoke","ts":"2025-12-18T00:00:02Z","payload":"foo"}
-{"id":4,"source":"smoke","ts":"2025-12-18T00:00:03Z","payload":"bar"}
-{"id":5,"source":"smoke","ts":"2025-12-18T00:00:04Z","payload":"baz"}
-```
-- Verify rows landed in ClickHouse:
-```bash
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:8123/?query=SELECT+count(),+min(id),+max(id)+FROM+kafka_events'
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:8123/?query=SELECT+*+FROM+kafka_events+ORDER+BY+id'
-```
-- If anything fails, check connector status/logs:
-  - `curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq`
-  - `docker compose logs -f kafka-connect`
-
 ### Python Avro tools
 #### Setup
 - Create a pyenv virtualenv and install dependencies:
@@ -369,7 +327,7 @@ python scripts/python/avro_consumer.py
 
 ## ClickHouse
 - Role:
-  - single-node ClickHouse server (no integration yet),
+  - single-node ClickHouse server (sink target for Kafka Connect),
   - image `clickhouse/clickhouse-server:25.11`,
   - persists data in a named Docker volume (`clickhouse_data`), no external operational DB required.
 - Endpoints:
@@ -430,6 +388,55 @@ curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
   'http://localhost:8123/?query='
 ```
 - If your Kafka messages use different columns/types, edit `sql/ddl/clickhouse_kafka_sink.sql` accordingly, then rerun the command above.
+
+## End-to-end smoke test: Schema Registry → Kafka → ClickHouse (Avro)
+- Prereqs: ClickHouse table exists (`sql/ddl/clickhouse_kafka_sink.sql`), ClickHouse sink connector is RUNNING, Schema Registry up. The bundled connector config already uses Avro converters.
+- Apply the connector config (idempotent):
+```bash
+curl -s -X PUT -H "Content-Type: application/json" \
+  --data @configs/connect/clickhouse-sink.json \
+  http://localhost:8083/connectors/clickhouse-sink/config | jq
+```
+- Register the Avro schema for the topic:
+```bash
+curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
+  --data '{"schema":"{\"type\":\"record\",\"name\":\"KafkaEvent\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"long\"},{\"name\":\"source\",\"type\":\"string\"},{\"name\":\"ts\",\"type\":\"string\"},{\"name\":\"payload\",\"type\":\"string\"}]}"}' \
+  http://localhost:8081/subjects/kafka_events-value/versions
+```
+- Ensure the Kafka topic exists:
+```bash
+docker compose exec kafka-broker-1 kafka-topics \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --create --if-not-exists --topic kafka_events \
+  --replication-factor 3 --partitions 1
+```
+- Produce Avro messages (schema is registered; value converter is Avro):
+```bash
+docker compose exec -T schema-registry kafka-avro-console-producer \
+  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --topic kafka_events \
+  --property schema.registry.url=http://schema-registry:8081 \
+  --property value.schema='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}'
+```
+- Type a few records (one per line), then end with Ctrl+D:
+```json
+{"id":1,"source":"smoke","ts":"2025-12-18T00:00:00Z","payload":"hello"}
+{"id":2,"source":"smoke","ts":"2025-12-18T00:00:01Z","payload":"world"}
+{"id":3,"source":"smoke","ts":"2025-12-18T00:00:02Z","payload":"foo"}
+{"id":4,"source":"smoke","ts":"2025-12-18T00:00:03Z","payload":"bar"}
+{"id":5,"source":"smoke","ts":"2025-12-18T00:00:04Z","payload":"baz"}
+```
+- Verify rows landed in ClickHouse:
+```bash
+curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  'http://localhost:8123/?query=SELECT+count(),+min(id),+max(id)+FROM+kafka_events'
+curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  'http://localhost:8123/?query=SELECT+*+FROM+kafka_events+ORDER+BY+id'
+```
+- If anything fails, check connector status/logs:
+  - `curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq`
+  - `docker compose logs -f kafka-connect`
+- Further reading on Kafka data formats: https://www.automq.com/blog/avro-vs-json-schema-vs-protobuf-kafka-data-formats
 
 ## Ground rules
 - Prefer mounted configs over baked images.
