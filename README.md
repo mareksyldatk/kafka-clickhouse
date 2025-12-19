@@ -2,6 +2,13 @@
 
 This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; Kafka, Schema Registry, and ClickHouse are now running.
 
+## Current state
+- Kafka runs in KRaft mode (no ZooKeeper) with healthchecks, CLI smoke tests, and named volumes for persistence.
+- Schema Registry and Kafka Connect are up with health checks; Connect uses the native ClickHouse sink plugin baked into the image.
+- ClickHouse is a 2-node replicated cluster behind HAProxy, with Keeper coordination and persistent volumes per node.
+- End-to-end Kafka → Connect → ClickHouse flow is validated via repeatable Avro smoke tests.
+- Startup is health-ordered, so `docker compose up` brings the stack up deterministically.
+
 ## Repository layout
 - `docker-compose.yml` — Compose stack that grows one service at a time; currently includes Kafka (KRaft), Schema Registry, Kafka Connect, and ClickHouse.
 - `configs/` — mounted configuration files for services (ClickHouse overrides in `configs/clickhouse`, connector config samples in `configs/connect`).
