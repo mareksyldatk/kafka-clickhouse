@@ -28,6 +28,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
       KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_1:/var/lib/kafka/data
     healthcheck:
@@ -52,6 +53,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
       KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_2:/var/lib/kafka/data
     healthcheck:
@@ -76,6 +78,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller-1:9094,2@kafka-controller-2:9094,3@kafka-controller-3:9094
       KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_3:/var/lib/kafka/data
     healthcheck:
@@ -110,6 +113,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_1:/var/lib/kafka/data
     healthcheck:
@@ -144,6 +148,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_2:/var/lib/kafka/data
     healthcheck:
@@ -178,6 +183,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_3:/var/lib/kafka/data
     healthcheck:
@@ -241,6 +247,7 @@ services:
       CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
       CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      CONNECT_LOG4J_ROOT_LOGLEVEL: INFO
     healthcheck:
       test:
         - CMD-SHELL

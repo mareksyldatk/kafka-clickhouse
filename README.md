@@ -29,6 +29,13 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - Setup Python virtualenv + deps (pyenv required): `scripts/setup_python.sh`
 - The stack uses healthchecks + `depends_on` so `scripts/docker_up.sh` (or `docker compose up -d`) brings all services up in a safe order.
 
+## Logs & debugging
+- Kafka brokers/controllers: `docker compose logs -f kafka-broker-1` (repeat per node). Root log level is `WARN` to keep noise low; switch to `INFO` temporarily by exporting `KAFKA_LOG4J_ROOT_LOGLEVEL=INFO` before `docker compose up` if you need more detail.
+- Kafka Connect: `docker compose logs -f kafka-connect` for worker/connector output; log level is `INFO`.
+- Schema Registry: `docker compose logs -f schema-registry`.
+- ClickHouse: `docker compose logs -f clickhouse-1` (and `clickhouse-2`). Logs also live at `/var/log/clickhouse-server/` inside the container; logger level is `warning` and also writes to console.
+- Quick health checks: `docker compose ps` (look for `healthy`), `docker inspect "$(docker compose ps -q <service>)" --format '{{json .State.Health}}'` to see last probe output.
+
 ## Endpoints reference
 - **Kafka brokers (host / client-facing):** `localhost:19092`, `localhost:29092`, `localhost:39092`
 - **Kafka brokers (in-cluster):** `kafka-broker-1:9093`, `kafka-broker-2:9093`, `kafka-broker-3:9093`
@@ -45,6 +52,7 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - Kafka Connect: custom image; plugins baked from `docker/kafka-connect/plugins/`.
 - ClickHouse HAProxy: HTTP load balancer across both ClickHouse nodes at `http://localhost:18123`.
 - ClickHouse: 2-node cluster (ReplicatedMergeTree) backed by ClickHouse Keeper, each node on its own volume; node 1 exposed on 8123/9000 (`clickhouse-1`), node 2 on 8124/9001 (`clickhouse-2`).
+- Log levels: Kafka controllers/brokers run at `WARN`, Kafka Connect at `INFO`, ClickHouse at `warning` with console output to reduce noise while keeping useful diagnostics.
 
 ## Kafka
 ### Cluster topology
