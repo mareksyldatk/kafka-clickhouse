@@ -239,10 +239,13 @@ services:
       retries: 12
       start_period: 120s
 
-  clickhouse:
+  clickhouse-1:
     image: clickhouse/clickhouse-server:25.11
     platform: linux/amd64
     restart: unless-stopped
+    depends_on:
+      clickhouse-keeper:
+        condition: service_healthy
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:?Set CLICKHOUSE_USER in .env}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env}
@@ -250,8 +253,8 @@ services:
       - "8123:8123"
       - "9000:9000"
     volumes:
-      - clickhouse_data:/var/lib/clickhouse
-      - ./configs/clickhouse/config.d:/etc/clickhouse-server/config.d
+      - clickhouse_data_1:/var/lib/clickhouse
+      - ./configs/clickhouse/node1/config.d:/etc/clickhouse-server/config.d
       - ./configs/clickhouse/users.d:/etc/clickhouse-server/users.d
     healthcheck:
       test:
@@ -269,8 +272,62 @@ services:
       retries: 12
       start_period: 30s
 
+  clickhouse-2:
+    image: clickhouse/clickhouse-server:25.11
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      clickhouse-keeper:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?Set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env}
+    ports:
+      - "8124:8123"
+      - "9001:9000"
+    volumes:
+      - clickhouse_data_2:/var/lib/clickhouse
+      - ./configs/clickhouse/node2/config.d:/etc/clickhouse-server/config.d
+      - ./configs/clickhouse/users.d:/etc/clickhouse-server/users.d
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          clickhouse-client
+          --host 127.0.0.1
+          --port 9000
+          --user "$CLICKHOUSE_USER"
+          --password "$CLICKHOUSE_PASSWORD"
+          --query "SELECT 1"
+          --format Null
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
+  clickhouse-keeper:
+    image: clickhouse/clickhouse-keeper:25.11
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "9181:9181"
+    volumes:
+      - clickhouse_keeper_data:/var/lib/clickhouse
+      - ./configs/clickhouse/keeper/keeper.xml:/etc/clickhouse-keeper/keeper_config.xml
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          clickhouse-keeper-client --host 127.0.0.1 --port 9181 status
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
 volumes:
-  clickhouse_data:
+  clickhouse_data_1:
+  clickhouse_data_2:
+  clickhouse_keeper_data:
   kafka_broker_1:
   kafka_broker_2:
   kafka_broker_3:

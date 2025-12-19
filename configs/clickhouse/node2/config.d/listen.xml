@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<yandex>
+  <!-- Allow HTTP/native access from the host (local development only). -->
+  <listen_host>0.0.0.0</listen_host>
+  <interserver_listen_host>0.0.0.0</interserver_listen_host>
+</yandex>

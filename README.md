@@ -33,13 +33,15 @@ This repository starts as a minimal scaffold for an incremental Docker Compose�
 - **Kafka brokers (in-cluster):** `kafka-broker-1:9093`, `kafka-broker-2:9093`, `kafka-broker-3:9093`
 - **Schema Registry:** [http://localhost:8081](http://localhost:8081) (in-cluster: [http://schema-registry:8081](http://schema-registry:8081))
 - **Kafka Connect REST:** [http://localhost:8083](http://localhost:8083) (in-cluster: [http://kafka-connect:8083](http://kafka-connect:8083))
-- **ClickHouse:** HTTP [http://localhost:8123](http://localhost:8123), native TCP `localhost:9000`
+- **ClickHouse (node 1):** HTTP [http://localhost:8123](http://localhost:8123), native TCP `localhost:9000` (in-cluster: `clickhouse-1:9000`)
+- **ClickHouse (node 2):** HTTP [http://localhost:8124](http://localhost:8124), native TCP `localhost:9001`
+- **ClickHouse Keeper:** `localhost:9181`
 
 ## Stack at a glance
 - Kafka (KRaft): 3 controllers + 3 brokers, client ports exposed on localhost.
 - Schema Registry: backed by Kafka, reachable at `http://localhost:8081`.
 - Kafka Connect: custom image; plugins baked from `docker/kafka-connect/plugins/`.
-- ClickHouse: single node with a named data volume; target for the ClickHouse sink connector.
+- ClickHouse: 2-node cluster (ReplicatedMergeTree) backed by ClickHouse Keeper, each node on its own volume; node 1 exposed on 8123/9000 (`clickhouse-1`), node 2 on 8124/9001 (`clickhouse-2`).
 
 ## Kafka
 ### Cluster topology
@@ -327,28 +329,44 @@ python scripts/python/avro_consumer.py
 
 ## ClickHouse
 - Role:
-  - single-node ClickHouse server (sink target for Kafka Connect),
+  - two-node ClickHouse cluster (ReplicatedMergeTree) with ClickHouse Keeper; sink target for Kafka Connect,
   - image `clickhouse/clickhouse-server:25.11`,
-  - persists data in a named Docker volume (`clickhouse_data`), no external operational DB required.
+  - each node persists data in its own named Docker volume (`clickhouse_data_1`, `clickhouse_data_2`), no external operational DB required.
 - Endpoints:
-  - HTTP: `http://localhost:8123`,
-- native TCP: `localhost:9000`.
+  - node 1 HTTP/TCP: `http://localhost:8123`, `localhost:9000`
+  - node 2 HTTP/TCP: `http://localhost:8124`, `localhost:9001`
+  - ClickHouse Keeper: `localhost:9181`
 ### Credentials
 - HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`; defaults in `.env.example` are `admin` / `clickhouse`)
-  - Update `.env`, then `docker compose up -d clickhouse` to apply. Changing credentials later requires recreating the container.
+  - Update `.env`, then start ClickHouse (see Run). Changing credentials later requires recreating the container.
   - Stock `default` user is removed; `configs/clickhouse/users.d/default-user.xml` creates `admin` from env vars. Add your own users as overrides in `configs/clickhouse/users.d/` if needed.
 ### Config overrides
 - Mounted as additional include paths (defaults remain intact):
   - `configs/clickhouse/config.d` → `/etc/clickhouse-server/config.d`
   - `configs/clickhouse/users.d`   → `/etc/clickhouse-server/users.d`
+  - `configs/clickhouse/node1/config.d` → `/etc/clickhouse-server/config.d` for node 1
+  - `configs/clickhouse/node2/config.d` → `/etc/clickhouse-server/config.d` for node 2
+  - `configs/clickhouse/users.d`        → `/etc/clickhouse-server/users.d` (shared)
 - ClickHouse config layout docs: https://clickhouse.com/docs/operations/configuration-files
-- Active overrides:
-  - `configs/clickhouse/config.d/listen.xml` binds HTTP/native to all interfaces for local access.
-- Samples (inactive): `configs/clickhouse/config.d/example-profile.xml.sample`, `configs/clickhouse/users.d/example-user.xml.sample`.
+- Active overrides (per node directories):
+  - `listen.xml` binds HTTP/native to all interfaces for local access.
+  - `keeper.xml` points both nodes at ClickHouse Keeper.
+  - `cluster.xml` defines the `clickhouse_cluster` with two replicas.
+  - `00-macros.xml` sets `shard`/`replica` macros per node.
 - Default admin user for local dev lives in `configs/clickhouse/users.d/default-user.xml` (matches `.env.example` credentials).
-- To activate or add overrides: place a `.xml` file in the folders above, then `docker compose restart clickhouse`.
+- To activate or add overrides: place a `.xml` file in the node-specific folders above (or shared users.d), then `docker compose restart clickhouse`.
 ### Run
-- `docker compose up -d clickhouse`
+- `docker compose up -d clickhouse-keeper && docker compose up -d clickhouse-1 clickhouse-2`
+- If Keeper was started after the nodes (or fails healthcheck), restart in order:
+  - `docker compose stop clickhouse-1 clickhouse-2 clickhouse-keeper`
+  - optional reset if you can discard data: `docker volume rm kafka-clickhouse_clickhouse_keeper_data kafka-clickhouse_clickhouse_data_1 kafka-clickhouse_clickhouse_data_2`
+  - `docker compose up -d clickhouse-keeper`
+  - `docker compose up -d clickhouse-1 clickhouse-2`
+- If Keeper reports `Connection refused` from nodes, ensure it listens on 0.0.0.0:9181 (see `configs/clickhouse/keeper/keeper.xml`) and recreate it:
+  - `docker compose stop clickhouse-keeper`
+  - `docker compose rm -sf clickhouse-keeper`
+  - optional reset if you can discard data: `docker volume rm kafka-clickhouse_clickhouse_keeper_data`
+  - `docker compose up -d clickhouse-keeper`
 ### Smoke tests
 - Ping the HTTP endpoint (returns `Ok.`):
   ```bash
@@ -360,28 +378,25 @@ python scripts/python/avro_consumer.py
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
     'http://localhost:8123/?query=SELECT+currentUser(),+currentProfiles()'
   ```
-- Verify persistence across restarts (uses the named volume):
+- Verify replication and persistence:
   ```bash
-  # create a test table and write one row
+  # create a test table ON CLUSTER and write one row (ReplicatedMergeTree)
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    -X POST -d '' 'http://localhost:8123/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_clickhouse(id+UInt32)+ENGINE=MergeTree()+ORDER+BY+id'
+    -X POST -d '' 'http://localhost:8123/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_clickhouse+ON+CLUSTER+clickhouse_cluster(id+UInt32)+ENGINE=ReplicatedMergeTree('"'"/clickhouse/{shard}/smoke_clickhouse"'"','"'"{replica}"'"')+ORDER+BY+id'
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
     -X POST -d '' 'http://localhost:8123/?query=INSERT+INTO+smoke_clickhouse+VALUES(1)'
 
-  # restart the container
-  docker compose restart clickhouse
-
-  # confirm the row persists
+  # read from node 2 to confirm replication
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    'http://localhost:8123/?query=SELECT+*+FROM+smoke_clickhouse'
+    'http://localhost:8124/?query=SELECT+*+FROM+smoke_clickhouse'
   ```
 - Play UI (opens in browser; uses admin credentials in query params):
   [http://localhost:8123/play?user=admin&password=clickhouse](http://localhost:8123/play?user=admin&password=clickhouse) (update the URL if you change credentials)
 
 ### Example table for Kafka ingestion
-- DDL: `sql/ddl/clickhouse_kafka_sink.sql` defines a simple `kafka_events` MergeTree table (id, source, ts, payload) to receive rows from Kafka.
-- When to create: after ClickHouse is up and before wiring a Kafka Connect sink; run once per environment.
-- How to create:
+- DDL: `sql/ddl/clickhouse_kafka_sink.sql` defines a replicated `kafka_events` table (ReplicatedMergeTree with macros) to receive rows from Kafka.
+- When to create: after ClickHouse and ClickHouse Keeper are up and before wiring a Kafka Connect sink; run once per environment.
+- How to create on all replicas (preferred): run ON CLUSTER once from any node:
 ```bash
 curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
@@ -396,6 +411,12 @@ curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
 curl -s -X PUT -H "Content-Type: application/json" \
   --data @configs/connect/clickhouse-sink.json \
   http://localhost:8083/connectors/clickhouse-sink/config | jq
+```
+- Ensure the replicated table exists on the cluster:
+```bash
+curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
+  'http://localhost:8123/?query='
 ```
 - Register the Avro schema for the topic:
 ```bash
