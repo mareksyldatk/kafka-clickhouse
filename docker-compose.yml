@@ -324,6 +324,28 @@ services:
       retries: 12
       start_period: 30s
 
+  clickhouse-haproxy:
+    image: haproxy:3.2.10-alpine
+    platform: linux/amd64
+    restart: unless-stopped
+    depends_on:
+      clickhouse-1:
+        condition: service_healthy
+      clickhouse-2:
+        condition: service_healthy
+    ports:
+      - "18123:8123"
+    volumes:
+      - ./configs/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
 volumes:
   clickhouse_data_1:
   clickhouse_data_2:

@@ -33,6 +33,7 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - **Kafka brokers (in-cluster):** `kafka-broker-1:9093`, `kafka-broker-2:9093`, `kafka-broker-3:9093`
 - **Schema Registry:** [http://localhost:8081](http://localhost:8081) (in-cluster: [http://schema-registry:8081](http://schema-registry:8081))
 - **Kafka Connect REST:** [http://localhost:8083](http://localhost:8083) (in-cluster: [http://kafka-connect:8083](http://kafka-connect:8083))
+- **ClickHouse via HAProxy (HTTP LB):** [http://localhost:18123](http://localhost:18123) (in-cluster: [http://clickhouse-haproxy:8123](http://clickhouse-haproxy:8123))
 - **ClickHouse (node 1):** HTTP [http://localhost:8123](http://localhost:8123), native TCP `localhost:9000` (in-cluster: `clickhouse-1:9000`)
 - **ClickHouse (node 2):** HTTP [http://localhost:8124](http://localhost:8124), native TCP `localhost:9001`
 - **ClickHouse Keeper:** `localhost:9181`
@@ -41,6 +42,7 @@ This repository starts as a minimal scaffold for an incremental Docker Composeâ€
 - Kafka (KRaft): 3 controllers + 3 brokers, client ports exposed on localhost.
 - Schema Registry: backed by Kafka, reachable at `http://localhost:8081`.
 - Kafka Connect: custom image; plugins baked from `docker/kafka-connect/plugins/`.
+- ClickHouse HAProxy: HTTP load balancer across both ClickHouse nodes at `http://localhost:18123`.
 - ClickHouse: 2-node cluster (ReplicatedMergeTree) backed by ClickHouse Keeper, each node on its own volume; node 1 exposed on 8123/9000 (`clickhouse-1`), node 2 on 8124/9001 (`clickhouse-2`).
 
 ## Kafka
@@ -333,10 +335,13 @@ python scripts/python/avro_consumer.py
   - two-node ClickHouse cluster (ReplicatedMergeTree) with ClickHouse Keeper; sink target for Kafka Connect,
   - image `clickhouse/clickhouse-server:25.11`,
   - each node persists data in its own named Docker volume (`clickhouse_data_1`, `clickhouse_data_2`), no external operational DB required.
+  - optional HTTP load balancer (HAProxy) for BI/REST clients on `http://localhost:18123` (routes to both nodes, checks `/ping`).
 - Endpoints:
+  - HAProxy HTTP LB: `http://localhost:18123` (in-cluster: `http://clickhouse-haproxy:8123`)
   - node 1 HTTP/TCP: `http://localhost:8123`, `localhost:9000`
   - node 2 HTTP/TCP: `http://localhost:8124`, `localhost:9001`
   - ClickHouse Keeper: `localhost:9181`
+  - Tip: point BI/HTTP clients (e.g., Metabase) at the HAProxy endpoint; it health-checks `/ping` and round-robins the two nodes.
 ### Credentials
 - HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`; defaults in `.env.example` are `admin` / `clickhouse`)
   - Update `.env`, then start ClickHouse (see Run). Changing credentials later requires recreating the container.
@@ -369,7 +374,11 @@ python scripts/python/avro_consumer.py
   - optional reset if you can discard data: `docker volume rm kafka-clickhouse_clickhouse_keeper_data`
   - `docker compose up -d clickhouse-keeper`
 ### Smoke tests
-- Ping the HTTP endpoint (returns `Ok.`):
+- Ping via HAProxy (returns `Ok.`):
+  ```bash
+  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" http://localhost:18123/ping
+  ```
+- Ping a specific node if needed:
   ```bash
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" http://localhost:8123/ping
   ```
@@ -377,15 +386,15 @@ python scripts/python/avro_consumer.py
 - Confirm effective user/profile (verifies overrides are applied):
   ```bash
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    'http://localhost:8123/?query=SELECT+currentUser(),+currentProfiles()'
+    'http://localhost:18123/?query=SELECT+currentUser(),+currentProfiles()'
   ```
 - Verify replication and persistence:
   ```bash
   # create a test table ON CLUSTER and write one row (ReplicatedMergeTree)
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    -X POST -d '' 'http://localhost:8123/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_clickhouse+ON+CLUSTER+clickhouse_cluster(id+UInt32)+ENGINE=ReplicatedMergeTree('"'"/clickhouse/{shard}/smoke_clickhouse"'"','"'"{replica}"'"')+ORDER+BY+id'
+    -X POST -d '' 'http://localhost:18123/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_clickhouse+ON+CLUSTER+clickhouse_cluster(id+UInt32)+ENGINE=ReplicatedMergeTree('"'"/clickhouse/{shard}/smoke_clickhouse"'"','"'"{replica}"'"')+ORDER+BY+id'
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    -X POST -d '' 'http://localhost:8123/?query=INSERT+INTO+smoke_clickhouse+VALUES(1)'
+    -X POST -d '' 'http://localhost:18123/?query=INSERT+INTO+smoke_clickhouse+VALUES(1)'
 
   # read from node 2 to confirm replication
   curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
@@ -401,7 +410,7 @@ python scripts/python/avro_consumer.py
 ```bash
 curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
-  'http://localhost:8123/?query='
+  'http://localhost:18123/?query='
 ```
 - If your Kafka messages use different columns/types, edit `sql/ddl/clickhouse_kafka_sink.sql` accordingly, then rerun the command above.
 
@@ -417,7 +426,7 @@ curl -s -X PUT -H "Content-Type: application/json" \
 ```bash
 curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
-  'http://localhost:8123/?query='
+  'http://localhost:18123/?query='
 ```
 - Register the Avro schema for the topic:
 ```bash
@@ -452,9 +461,9 @@ docker compose exec -T schema-registry kafka-avro-console-producer \
 - Verify rows landed in ClickHouse:
 ```bash
 curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:8123/?query=SELECT+count(),+min(id),+max(id)+FROM+kafka_events'
+  'http://localhost:18123/?query=SELECT+count(),+min(id),+max(id)+FROM+kafka_events'
 curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:8123/?query=SELECT+*+FROM+kafka_events+ORDER+BY+id'
+  'http://localhost:18123/?query=SELECT+*+FROM+kafka_events+ORDER+BY+id'
 ```
 - If anything fails, check connector status/logs:
   - `curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq`
