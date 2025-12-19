@@ -11,7 +11,7 @@ BOOTSTRAP = os.getenv(
     "localhost:19092,localhost:29092,localhost:39092",
 )
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
-TOPIC = os.getenv("TOPIC", "smoke_avro")
+TOPIC = os.getenv("TOPIC", "smoke-avro")
 MESSAGE_ID = os.getenv("MESSAGE_ID", "1")
 
 SCHEMA_STR = """

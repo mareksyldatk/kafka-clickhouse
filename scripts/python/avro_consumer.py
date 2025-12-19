@@ -11,8 +11,8 @@ BOOTSTRAP = os.getenv(
     "localhost:19092,localhost:29092,localhost:39092",
 )
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
-TOPIC = os.getenv("TOPIC", "smoke_avro")
-GROUP_ID = os.getenv("GROUP_ID", "smoke_avro_consumer")
+TOPIC = os.getenv("TOPIC", "smoke-avro")
+GROUP_ID = os.getenv("GROUP_ID", "smoke-avro-consumer")
 MAX_MESSAGES = int(os.getenv("MAX_MESSAGES", "5"))
 
 

@@ -109,11 +109,11 @@ docker compose exec kafka-broker-1 kafka-topics \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --create \
   --if-not-exists \
-  --topic smoke_kafka \
+  --topic smoke-kafka \
   --replication-factor 3 \
   --partitions 1
 ```
-- List topics (should include `smoke_kafka`):
+- List topics (should include `smoke-kafka`):
 ```bash
 docker compose exec kafka-broker-1 kafka-topics \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
@@ -125,13 +125,13 @@ docker compose exec kafka-broker-1 kafka-topics \
 ```bash
 docker compose exec -T kafka-broker-1 kafka-console-producer \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic smoke_kafka
+  --topic smoke-kafka
 ```
 - Consume from the start (reads historical messages; exits after 10):
 ```bash
 docker compose exec -T kafka-broker-1 kafka-console-consumer \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic smoke_kafka \
+  --topic smoke-kafka \
   --from-beginning \
   --max-messages 10
 ```
@@ -165,34 +165,34 @@ docker compose exec kafka-broker-1 kafka-topics \
 ```bash
 curl -s -X PUT -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"compatibility":"BACKWARD"}' \
-  http://localhost:8081/config/smoke_avro-value
+  http://localhost:8081/config/smoke-avro-value
 ```
 - Register v1 schema (creates the subject):
 ```bash
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"schema":"{\"type\":\"record\",\"name\":\"SmokeAvro\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"}]}"}' \
-  http://localhost:8081/subjects/smoke_avro-value/versions
+  http://localhost:8081/subjects/smoke-avro-value/versions
 ```
 - List subject versions (should show `1`):
 ```bash
-curl -s http://localhost:8081/subjects/smoke_avro-value/versions
+curl -s http://localhost:8081/subjects/smoke-avro-value/versions
 ```
 - Print latest schema (full JSON, then the schema string):
 ```bash
-curl -s http://localhost:8081/subjects/smoke_avro-value/versions/latest
-curl -s http://localhost:8081/subjects/smoke_avro-value/versions/latest | jq -r .schema
+curl -s http://localhost:8081/subjects/smoke-avro-value/versions/latest
+curl -s http://localhost:8081/subjects/smoke-avro-value/versions/latest | jq -r .schema
 ```
 - Check compatibility for a candidate schema (adds a field with default = backward compatible):
 ```bash
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"schema":"{\"type\":\"record\",\"name\":\"SmokeAvro\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"source\",\"type\":\"string\",\"default\":\"unknown\"}]}"}' \
-  http://localhost:8081/compatibility/subjects/smoke_avro-value/versions/latest
+  http://localhost:8081/compatibility/subjects/smoke-avro-value/versions/latest
 ```
 - Register v2 schema (extends the subject):
 ```bash
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"schema":"{\"type\":\"record\",\"name\":\"SmokeAvro\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"source\",\"type\":\"string\",\"default\":\"unknown\"}]}"}' \
-  http://localhost:8081/subjects/smoke_avro-value/versions
+  http://localhost:8081/subjects/smoke-avro-value/versions
 ```
 
 ##### Avro messages (optional)
@@ -202,7 +202,7 @@ docker compose exec kafka-broker-1 kafka-topics \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --create \
   --if-not-exists \
-  --topic smoke_avro \
+  --topic smoke-avro \
   --replication-factor 3 \
   --partitions 1
 ```
@@ -210,7 +210,7 @@ docker compose exec kafka-broker-1 kafka-topics \
 ```bash
 docker compose exec -T schema-registry kafka-avro-console-producer \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic smoke_avro \
+  --topic smoke-avro \
   --property schema.registry.url=http://schema-registry:8081 \
   --property value.schema='{"type":"record","name":"SmokeAvro","namespace":"example","fields":[{"name":"id","type":"string"}]}' \
   --producer-property enable.metrics.push=false
@@ -223,14 +223,14 @@ docker compose exec -T schema-registry kafka-avro-console-producer \
 ```bash
 docker compose exec -T schema-registry kafka-avro-console-consumer \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic smoke_avro \
+  --topic smoke-avro \
   --from-beginning \
   --property schema.registry.url=http://schema-registry:8081 \
   --max-messages 5
 ```
 - Verify Schema Registry registered the subject:
 ```bash
-curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
+curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke-avro-value$'
 ```
 
 ## Kafka Connect
@@ -288,7 +288,7 @@ curl -s http://localhost:8083/connector-plugins | jq -r '.[].class'
 - No connectors are bundled by default; add them under `docker/kafka-connect/plugins/` before building.
 
 ### Example ClickHouse sink connector (single topic → single table, native plugin)
-- Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka_events` to table `kafka_events` using the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector).
+- Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka-events` to table `kafka_events` using the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector).
 - Prerequisites:
   - ClickHouse table exists: create via `sql/ddl/clickhouse_kafka_sink.sql`.
   - Add the native ClickHouse sink connector (zip or jar) and ClickHouse JDBC driver jar to `docker/kafka-connect/plugins/clickhouse-sink/` before building (all local, no downloads).
@@ -330,7 +330,7 @@ python scripts/python/avro_producer.py
 ```bash
 BOOTSTRAP_SERVERS="localhost:19092,localhost:29092,localhost:39092" \
 SCHEMA_REGISTRY_URL="http://localhost:8081" \
-TOPIC="smoke_avro" \
+TOPIC="smoke-avro" \
 MESSAGE_ID="42" \
 python scripts/python/avro_producer.py
 ```
@@ -345,8 +345,8 @@ python scripts/python/avro_consumer.py
 ```bash
 BOOTSTRAP_SERVERS="localhost:19092,localhost:29092,localhost:39092" \
 SCHEMA_REGISTRY_URL="http://localhost:8081" \
-TOPIC="smoke_avro" \
-GROUP_ID="smoke_avro_consumer" \
+TOPIC="smoke-avro" \
+GROUP_ID="smoke-avro-consumer" \
 MAX_MESSAGES="5" \
 python scripts/python/avro_consumer.py
 ```
@@ -357,11 +357,11 @@ python scripts/python/avro_consumer.py
   - image `clickhouse/clickhouse-server:25.11`,
   - each node persists data in its own named Docker volume (`clickhouse_data_1`, `clickhouse_data_2`), no external operational DB required.
   - optional HTTP load balancer (HAProxy) for BI/REST clients on `http://localhost:18123` (routes to both nodes, checks `/ping`).
-- Endpoints:
-  - HAProxy HTTP LB: `http://localhost:18123` (in-cluster: `http://clickhouse-haproxy:8123`)
-  - node 1 HTTP/TCP: `http://localhost:8123`, `localhost:9000`
-  - node 2 HTTP/TCP: `http://localhost:8124`, `localhost:9001`
-  - ClickHouse Keeper: `localhost:9181`
+  - Endpoints:
+    - HAProxy HTTP LB: `http://localhost:18123` (in-cluster: `http://clickhouse-haproxy:8123`)
+    - node 1 HTTP/TCP: `http://localhost:8123`, `localhost:9000`
+    - node 2 HTTP/TCP: `http://localhost:8124`, `localhost:9001`
+    - ClickHouse Keeper: `localhost:9181`
   - Tip: point BI/HTTP clients (e.g., Metabase) at the HAProxy endpoint; it health-checks `/ping` and round-robins the two nodes.
 ### Credentials
 - HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`; defaults in `.env.example` are `admin` / `clickhouse`)
@@ -438,6 +438,8 @@ curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
 
 ## End-to-end smoke test: Schema Registry → Kafka → ClickHouse (Avro)
 - Prereqs: ClickHouse table exists (`sql/ddl/clickhouse_kafka_sink.sql`), ClickHouse sink connector is RUNNING, Schema Registry up. The bundled connector config already uses Avro converters.
+- One-shot script (non-interactive) that runs these steps: `scripts/smoke_test.sh`
+- Topic name uses a hyphen (`kafka-events`) to avoid Kafka’s metrics collision warning for dots vs underscores.
 - Apply the connector config (idempotent):
 ```bash
 curl -s -X PUT -H "Content-Type: application/json" \
@@ -454,20 +456,20 @@ curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
 ```bash
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"schema":"{\"type\":\"record\",\"name\":\"KafkaEvent\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"long\"},{\"name\":\"source\",\"type\":\"string\"},{\"name\":\"ts\",\"type\":\"string\"},{\"name\":\"payload\",\"type\":\"string\"}]}"}' \
-  http://localhost:8081/subjects/kafka_events-value/versions
+  http://localhost:8081/subjects/kafka-events-value/versions
 ```
 - Ensure the Kafka topic exists:
 ```bash
 docker compose exec kafka-broker-1 kafka-topics \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --create --if-not-exists --topic kafka_events \
+  --create --if-not-exists --topic kafka-events \
   --replication-factor 3 --partitions 1
 ```
 - Produce Avro messages (schema is registered; value converter is Avro):
 ```bash
 docker compose exec -T schema-registry kafka-avro-console-producer \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic kafka_events \
+  --topic kafka-events \
   --property schema.registry.url=http://schema-registry:8081 \
   --property value.schema='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}' \
   --producer-property enable.metrics.push=false
@@ -487,7 +489,7 @@ docker compose exec -T schema-registry kafka-avro-console-producer \
 curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
   'http://localhost:18123/?query=SELECT+count(),+min(id),+max(id)+FROM+kafka_events'
 curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:18123/?query=SELECT+*+FROM+kafka_events+ORDER+BY+id'
+  'http://localhost:18123/?query=SELECT+*+FROM+kafka_events+ORDER+BY+id+LIMIT+5'
 ```
 - If anything fails, check connector status/logs:
   - `curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq`
