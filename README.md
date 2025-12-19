@@ -190,7 +190,8 @@ docker compose exec -T schema-registry kafka-avro-console-producer \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --topic smoke_avro \
   --property schema.registry.url=http://schema-registry:8081 \
-  --property value.schema='{"type":"record","name":"SmokeAvro","namespace":"example","fields":[{"name":"id","type":"string"}]}'
+  --property value.schema='{"type":"record","name":"SmokeAvro","namespace":"example","fields":[{"name":"id","type":"string"}]}' \
+  --producer-property enable.metrics.push=false
 ```
 - Type a few records (one per line), then end with Ctrl+D:
 ```json
@@ -437,7 +438,8 @@ docker compose exec -T schema-registry kafka-avro-console-producer \
   --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
   --topic kafka_events \
   --property schema.registry.url=http://schema-registry:8081 \
-  --property value.schema='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}'
+  --property value.schema='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}' \
+  --producer-property enable.metrics.push=false
 ```
 - Type a few records (one per line), then end with Ctrl+D:
 ```json
