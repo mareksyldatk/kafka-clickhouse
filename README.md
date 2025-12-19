@@ -3,9 +3,10 @@
 This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; Kafka, Schema Registry, and ClickHouse are now running.
 
 ## Repository layout
-- `docker-compose.yml` — Compose stack that grows one service at a time; currently includes Kafka (KRaft), Schema Registry, and ClickHouse.
-- `configs/` — mounted configuration files for services (empty placeholder).
-- `sql/` — ClickHouse schemas and setup scripts (empty placeholder).
+- `docker-compose.yml` — Compose stack that grows one service at a time; currently includes Kafka (KRaft), Schema Registry, Kafka Connect, and ClickHouse.
+- `configs/` — mounted configuration files for services (ClickHouse overrides in `configs/clickhouse`, connector config samples in `configs/connect`).
+- `sql/` — ClickHouse schemas and setup scripts (DDLs live under `sql/ddl/`).
+- `docker/` — custom images build contexts (e.g., Kafka Connect plugins).
 - `scripts/` — helper scripts for local workflows.
 
 ## How to use this scaffold
@@ -204,7 +205,7 @@ curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke_avro-value$'
 ## Kafka Connect
 - Role:
   - distributed Kafka Connect worker (no connectors installed yet),
-  - image `kafka-clickhouse-kafka-connect:7.7.7` (built from `confluentinc/cp-kafka-connect:7.7.7` with plugins baked in),
+  - image `kafka-clickhouse-kafka-connect:7.7.7` (built from `confluentinc/cp-kafka-connect:7.7.7`; plugins are baked in from local `docker/kafka-connect/plugins/` when present),
   - internal topics replicated across brokers for configs/offsets/status.
 - Internal topics (restart-safe state stored in Kafka volumes):
   - `connect-configs`: connector/task configs, `partitions=1`, `replication-factor=3`, compacted.
@@ -240,8 +241,9 @@ docker compose exec kafka-broker-1 kafka-topics \
 ```
 
 ### Plugins (deterministic, image-based)
-- Approach: custom image (`docker/kafka-connect/Dockerfile`) built on top of `confluentinc/cp-kafka-connect:7.7.7` with plugins baked in. This pins connector versions in source control and avoids drift from host-mounted folders.
-- Add a plugin: download and unpack the connector into `docker/kafka-connect/plugins/<connector-name>/`.
+- Approach: custom image (`docker/kafka-connect/Dockerfile`) built on top of `confluentinc/cp-kafka-connect:7.7.7`; plugins are baked in from local `docker/kafka-connect/plugins/` on build, keeping versions pinned in source control and avoiding drift from host-mounted folders.
+- Native ClickHouse sink: place the ClickHouse sink connector jar(s) and ClickHouse JDBC driver under `docker/kafka-connect/plugins/clickhouse-sink/` before building (all plugins are provided locally; no downloads during build).
+- Add other plugins: download and unpack the connector into `docker/kafka-connect/plugins/<connector-name>/`.
 - Rebuild and restart Connect:
 ```bash
 docker compose build kafka-connect
@@ -251,7 +253,32 @@ docker compose up -d kafka-connect
 ```bash
 curl -s http://localhost:8083/connector-plugins | jq -r '.[].class'
 ```
-- (No connectors installed yet; ClickHouse connector will be added later.)
+- No connectors are bundled by default; add them under `docker/kafka-connect/plugins/` before building.
+
+### Example ClickHouse sink connector (single topic → single table, native plugin)
+- Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka_events` to table `kafka_events` using the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector).
+- Prerequisites:
+  - ClickHouse table exists: create via `sql/ddl/clickhouse_kafka_sink.sql`.
+  - Add the native ClickHouse sink connector (zip or jar) and ClickHouse JDBC driver jar to `docker/kafka-connect/plugins/clickhouse-sink/` before building (all local, no downloads).
+  - Rebuild Connect to bake them in:
+```bash
+docker compose build kafka-connect
+docker compose up -d kafka-connect
+```
+  - Confirm the class is available:
+```bash
+curl -s http://localhost:8083/connector-plugins | jq -r '.[].class' | rg ClickHouseSinkConnector
+```
+- Deploy (edit credentials/topic/table in the JSON if you changed them):
+```bash
+curl -s -X PUT -H "Content-Type: application/json" \
+  --data @configs/connect/clickhouse-sink.json \
+  http://localhost:8083/connectors/clickhouse-sink/config | jq
+```
+- Check status:
+```bash
+curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq
+```
 
 ### Python Avro tools
 #### Setup

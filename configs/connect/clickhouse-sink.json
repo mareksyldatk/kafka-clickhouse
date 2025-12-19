@@ -1,0 +1,15 @@
+{
+  "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
+  "tasks.max": "1",
+  "topics": "kafka_events",
+  "hostname": "clickhouse",
+  "port": "8123",
+  "username": "admin",
+  "password": "clickhouse",
+  "database": "default",
+  "table": "kafka_events",
+  "insert_mode": "INSERT",
+  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "false"
+}

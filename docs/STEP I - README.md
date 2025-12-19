@@ -300,6 +300,8 @@ No code changes, documentation only.
 
 ---
 
+# TODO: use avro schema and schema-registry to make sure ingestion schema works with table
+
 ## Phase 6 — Stability polish (still Step I)
 
 ### Commit 17 — Log hygiene
