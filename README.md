@@ -77,10 +77,10 @@ Controllers:  kafka-controller-1/2/3 (quorum on :9094)
 - Brokers handle client traffic (produce/consume) and store topic data.
 - This split mirrors production patterns while keeping the local stack small.
 
-#### SASL/PLAIN placeholders (not enabled)
-- Future SASL/PLAIN configs live in `configs/kafka/secrets/` (`broker_jaas.conf`, `client_jaas.conf`, `client.properties`).
-- Files are mounted read-only into Kafka, Schema Registry, and Kafka Connect containers, but the stack still runs in PLAINTEXT mode until you set the relevant env vars and listener configs.
-- Keep real credentials out of git; inject via `.env` or your shell when you decide to enable SASL.
+#### SASL/PLAIN placeholders (internal listener enabled)
+- Broker internal listener now uses SASL_PLAINTEXT and reads `/etc/kafka/secrets/broker_jaas.conf`.
+- Client-side placeholders live in `configs/kafka/secrets/` (`client_jaas.conf`, `client.properties`) for later updates.
+- Keep real credentials out of git; inject via `.env` or your shell when you decide to update clients.
 
 ### Kafka cluster (KRaft)
 - Role:
@@ -104,6 +104,7 @@ Controllers:  kafka-controller-1/2/3 (quorum on :9094)
 #### Health
 - `docker compose ps` (look for `healthy` in the `STATE` column)
 - `docker inspect "$(docker compose ps -q kafka-broker-1)" --format '{{json .State.Health}}'` (probe status and last output)
+- SASL check (broker startup): `docker compose logs -f kafka-broker-1` and confirm the broker reaches `Kafka Server started`.
 - Logs (WARN by default): `docker compose logs -f kafka-broker-1` (repeat per node); set `KAFKA_LOG4J_ROOT_LOGLEVEL=INFO` if you need more detail, then restart.
 
 #### Smoke tests
