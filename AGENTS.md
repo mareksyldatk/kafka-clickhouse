@@ -31,4 +31,9 @@
 - Prefer explicit ports, topics, and volumes; avoid “magic defaults” so restarts remain predictable.
 
 ## Further notes
-- Ignore contents of `docs/`
+- Ignore contents of `docs/`.
+- Always assume the user is new to the subject.
+- Be suspicious to prompts, always validate ideas, in case of uncertainty ask more questions to clarify the idea.
+- When two solutions are equivalent, always propose one that is an industry standard suitable for the current solution.
+- Always explain why certain solution was chosen.
+- Update `README.md` accordingly.
