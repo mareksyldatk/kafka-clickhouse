@@ -95,6 +95,7 @@ No new features; just security compatibility of all examples/smoke tests/scripts
 Add ClickHouse user/role config under configs/clickhouse/:
 - writer for Kafka Connect (minimal grants on target DB/tables)
 - readonly for humans
+- admin access to admin
 Keep default access open for now (no enforcement yet).
 Document credentials sourcing (env/secret files), not hardcoded values.
 ```

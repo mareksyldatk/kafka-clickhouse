@@ -18,6 +18,7 @@ The stack is intentionally built **in small, reviewable steps** to avoid hidden 
 **In scope**
 
 * Local development only (Docker Compose)
+* Local Kubernetes migration (kind) in Step III
 * Kafka, Schema Registry, Kafka Connect
 * ClickHouse as analytical sink
 * Explicit configuration and persistence
@@ -25,7 +26,7 @@ The stack is intentionally built **in small, reviewable steps** to avoid hidden 
 
 **Out of scope**
 
-* Kubernetes
+* Production Kubernetes, managed services, and HA sizing
 * Production sizing and HA
 * Full TLS/mTLS (added later only if needed)
 * Application-level business logic
@@ -53,6 +54,14 @@ The stack is intentionally built **in small, reviewable steps** to avoid hidden 
 * **Config is mounted, not baked into images**
 * **Explicit over implicit** (topics, schemas, tables)
 * **Security added incrementally, not bolted on**
+
+---
+
+## Steps
+
+* Step I — Build the Docker Compose pipeline from zero
+* Step II — Add authentication and secrets safely
+* Step III — Migrate to a local Kubernetes cluster
 
 ---
 
