@@ -7,7 +7,7 @@
   "username": "admin",
   "password": "clickhouse",
   "database": "default",
-  "table": "kafka_events",
+  "topic2TableMap": "kafka-events=kafka_events",
   "insert_mode": "INSERT",
   "key.converter": "org.apache.kafka.connect.storage.StringConverter",
   "value.converter": "io.confluent.connect.avro.AvroConverter",

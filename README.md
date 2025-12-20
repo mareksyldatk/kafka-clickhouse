@@ -77,6 +77,11 @@ Controllers:  kafka-controller-1/2/3 (quorum on :9094)
 - Brokers handle client traffic (produce/consume) and store topic data.
 - This split mirrors production patterns while keeping the local stack small.
 
+#### SASL/PLAIN placeholders (not enabled)
+- Future SASL/PLAIN configs live in `configs/kafka/secrets/` (`broker_jaas.conf`, `client_jaas.conf`, `client.properties`).
+- Files are mounted read-only into Kafka, Schema Registry, and Kafka Connect containers, but the stack still runs in PLAINTEXT mode until you set the relevant env vars and listener configs.
+- Keep real credentials out of git; inject via `.env` or your shell when you decide to enable SASL.
+
 ### Kafka cluster (KRaft)
 - Role:
   - three controller-only nodes + three broker-only nodes (no ZooKeeper),
@@ -288,7 +293,8 @@ curl -s http://localhost:8083/connector-plugins | jq -r '.[].class'
 - No connectors are bundled by default; add them under `docker/kafka-connect/plugins/` before building.
 
 ### Example ClickHouse sink connector (single topic → single table, native plugin)
-- Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka-events` to table `kafka_events` using the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector).
+- Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka-events` to table `kafka_events` via `topic2TableMap` for the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector).
+- Note: the native ClickHouse sink defaults to using the Kafka topic name as the table name unless `topic2TableMap` is provided. We keep hyphens in Kafka topics but underscores in ClickHouse table names, so the explicit map is required.
 - Prerequisites:
   - ClickHouse table exists: create via `sql/ddl/clickhouse_kafka_sink.sql`.
   - Add the native ClickHouse sink connector (zip or jar) and ClickHouse JDBC driver jar to `docker/kafka-connect/plugins/clickhouse-sink/` before building (all local, no downloads).

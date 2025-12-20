@@ -31,6 +31,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_1:/var/lib/kafka/data
+      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -56,6 +57,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_2:/var/lib/kafka/data
+      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -81,6 +83,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_3:/var/lib/kafka/data
+      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -116,6 +119,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_1:/var/lib/kafka/data
+      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -151,6 +155,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_2:/var/lib/kafka/data
+      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -186,6 +191,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_3:/var/lib/kafka/data
+      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -214,6 +220,8 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+    volumes:
+      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
 
   kafka-connect:
     build:
@@ -256,6 +264,8 @@ services:
       timeout: 5s
       retries: 12
       start_period: 120s
+    volumes:
+      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
 
   clickhouse-1:
     image: clickhouse/clickhouse-server:25.11

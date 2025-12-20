@@ -13,6 +13,7 @@ Production hardening (mTLS, disk encryption, secret management) is out of scope 
 - Current stack is PLAINTEXT with no auth. If you enable auth locally, use SASL/PLAIN only (no TLS) to keep tooling simple.
 - Use separate principals when enabling SASL/PLAIN (e.g., one for Schema Registry, one for Kafka Connect) instead of sharing a single user.
 - Listener security must be applied consistently across all brokers/controllers; this stack does not mix secure and insecure listeners.
+- Placeholder SASL files live in `configs/kafka/secrets/` and are mounted read-only into Kafka and client containers.
 
 ## Schema Registry and Kafka Connect
 - Both services talk to Kafka over the internal Docker network. When SASL/PLAIN is enabled on Kafka, configure distinct credentials per service.
