@@ -351,6 +351,22 @@ MAX_MESSAGES="5" \
 python scripts/python/avro_consumer.py
 ```
 
+#### ClickHouse query (HTTP via HAProxy)
+- Script: `scripts/python/query_clickhouse.py`
+- Run (defaults match the local stack):
+```bash
+python scripts/python/query_clickhouse.py
+```
+- Override defaults if needed:
+```bash
+CLICKHOUSE_HTTP="http://localhost:18123" \
+CLICKHOUSE_USER="admin" \
+CLICKHOUSE_PASSWORD="clickhouse" \
+TABLE="kafka_events" \
+LIMIT=10 \
+python scripts/python/query_clickhouse.py
+```
+
 ## ClickHouse
 - Role:
   - two-node ClickHouse cluster (ReplicatedMergeTree) with ClickHouse Keeper; sink target for Kafka Connect,

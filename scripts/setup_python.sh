@@ -52,5 +52,5 @@ pip install -r scripts/python/requirements.txt
 cat <<OUTPUT
 Virtualenv '$venv_name' is ready.
 Activate with: pyenv activate $venv_name
-Run: python scripts/python/avro_producer.py
+Run: python scripts/python/<your_script>.py
 OUTPUT
