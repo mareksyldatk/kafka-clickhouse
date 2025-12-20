@@ -37,3 +37,4 @@
 - When two solutions are equivalent, always propose one that is an industry standard suitable for the current solution.
 - Always explain why certain solution was chosen.
 - Update `README.md` accordingly.
+- Validate and remove unnecessary code and documentation without altering the functionality.

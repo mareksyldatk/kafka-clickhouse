@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import sys
+from datetime import datetime, timezone
 from confluent_kafka import Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
@@ -13,6 +14,9 @@ BOOTSTRAP = os.getenv(
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
 TOPIC = os.getenv("TOPIC", "smoke-avro")
 MESSAGE_ID = os.getenv("MESSAGE_ID", "1")
+MESSAGE_TS = os.getenv("MESSAGE_TS")
+SASL_USERNAME = os.getenv("KAFKA_CLIENT_SASL_USERNAME")
+SASL_PASSWORD = os.getenv("KAFKA_CLIENT_SASL_PASSWORD")
 
 SCHEMA_STR = """
 {
@@ -20,7 +24,8 @@ SCHEMA_STR = """
   "name": "SmokeAvro",
   "namespace": "example",
   "fields": [
-    {"name": "id", "type": "string"}
+    {"name": "id", "type": "string"},
+    {"name": "ts", "type": "string"}
   ]
 }
 """
@@ -31,17 +36,35 @@ def dict_to_avro(obj, ctx):
 
 
 def main() -> int:
+    if not SASL_USERNAME or not SASL_PASSWORD:
+        print(
+            "Missing SASL client credentials. "
+            "Set KAFKA_CLIENT_SASL_USERNAME and KAFKA_CLIENT_SASL_PASSWORD.",
+            file=sys.stderr,
+        )
+        return 1
+
     schema_registry = SchemaRegistryClient({"url": SCHEMA_REGISTRY_URL})
     serializer = AvroSerializer(schema_registry, SCHEMA_STR, dict_to_avro)
 
-    producer = Producer({"bootstrap.servers": BOOTSTRAP})
-    value = {"id": MESSAGE_ID}
+    config = {"bootstrap.servers": BOOTSTRAP}
+    config.update(
+        {
+            "security.protocol": "SASL_PLAINTEXT",
+            "sasl.mechanism": "PLAIN",
+            "sasl.username": SASL_USERNAME,
+            "sasl.password": SASL_PASSWORD,
+        }
+    )
+    producer = Producer(config)
+    ts = MESSAGE_TS or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    value = {"id": MESSAGE_ID, "ts": ts}
 
     payload = serializer(value, SerializationContext(TOPIC, MessageField.VALUE))
     producer.produce(topic=TOPIC, value=payload)
     producer.flush()
 
-    print(f"Produced 1 record to {TOPIC} with id={MESSAGE_ID}")
+    print(f"Produced 1 record to {TOPIC} with id={MESSAGE_ID} ts={ts}")
     return 0
 
 

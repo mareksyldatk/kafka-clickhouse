@@ -14,21 +14,38 @@ SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
 TOPIC = os.getenv("TOPIC", "smoke-avro")
 GROUP_ID = os.getenv("GROUP_ID", "smoke-avro-consumer")
 MAX_MESSAGES = int(os.getenv("MAX_MESSAGES", "5"))
+SASL_USERNAME = os.getenv("KAFKA_CLIENT_SASL_USERNAME")
+SASL_PASSWORD = os.getenv("KAFKA_CLIENT_SASL_PASSWORD")
 
 
 def main() -> int:
+    if not SASL_USERNAME or not SASL_PASSWORD:
+        print(
+            "Missing SASL client credentials. "
+            "Set KAFKA_CLIENT_SASL_USERNAME and KAFKA_CLIENT_SASL_PASSWORD.",
+            file=sys.stderr,
+        )
+        return 1
+
     schema_registry = SchemaRegistryClient({"url": SCHEMA_REGISTRY_URL})
     deserializer = AvroDeserializer(schema_registry)
 
-    consumer = DeserializingConsumer(
+    config = {
+        "bootstrap.servers": BOOTSTRAP,
+        "group.id": GROUP_ID,
+        "auto.offset.reset": "earliest",
+        "value.deserializer": deserializer,
+        "key.deserializer": None,
+    }
+    config.update(
         {
-            "bootstrap.servers": BOOTSTRAP,
-            "group.id": GROUP_ID,
-            "auto.offset.reset": "earliest",
-            "value.deserializer": deserializer,
-            "key.deserializer": None,
+            "security.protocol": "SASL_PLAINTEXT",
+            "sasl.mechanism": "PLAIN",
+            "sasl.username": SASL_USERNAME,
+            "sasl.password": SASL_PASSWORD,
         }
     )
+    consumer = DeserializingConsumer(config)
 
     consumer.subscribe([TOPIC])
 
