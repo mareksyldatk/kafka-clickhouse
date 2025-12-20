@@ -163,7 +163,7 @@ docker compose exec kafka-broker-1 kafka-topics \
 
 #### Smoke tests
 ##### List subjects
-- List registered subjects (empty `[]` if none yet):
+- List registered subjects (empty `[]` if none yet). This also confirms Schema Registry can reach Kafka over SASL:
   `curl -s http://localhost:8081/subjects`
 
 ##### Schema lifecycle (no producers/consumers yet)
