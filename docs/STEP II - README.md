@@ -6,7 +6,7 @@ Baseline stack: KRaft Kafka (3 controllers/3 brokers) with Schema Registry, Kafk
 - Add authentication across Kafka and ClickHouse so local pipelines aren’t “open by default”.
 - Keep it incremental and reversible: enable auth one surface at a time, validate, then proceed.
 - Keep secrets out of the repo/.env to match better practices (and avoid accidental commits).
-- Enforce least privilege for service and human access, with quick negative tests to prove it.
+- Enforce the least privilege for service and human access, with quick negative tests to prove it.
 
 ## Phase 1 — Kafka SASL/PLAIN (no TLS in local)
 

@@ -1,6 +1,6 @@
 # Kafka → ClickHouse (Local Pipeline Scaffold)
 
-This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; Kafka, Schema Registry, and ClickHouse are now running.
+This repository starts as a minimal scaffold for an incremental Docker Compose–based data pipeline. Services are added one commit at a time; Kafka, Schema Registry, and ClickHouse are now running. See `SECURITY.md` for the current local-only security posture.
 
 ## Current state
 - Kafka runs in KRaft mode (no ZooKeeper) with healthchecks, CLI smoke tests, and named volumes for persistence.
