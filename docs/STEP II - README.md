@@ -80,7 +80,7 @@ Do not redeploy sink connector yet.
 ```text
 Update the ClickHouse sink connector config (if needed) so it works with SASL-enabled Kafka.
 Run/refresh the Avro end-to-end smoke test and document the steps.
-No new features; just security compatibility.
+No new features; just security compatibility of all examples/smoke tests/scripts.
 ```
 **Why**
 - Ensures the core pipeline still runs after broker/client auth.

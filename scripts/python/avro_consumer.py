@@ -33,7 +33,7 @@ def main() -> int:
     config = {
         "bootstrap.servers": BOOTSTRAP,
         "group.id": GROUP_ID,
-        "auto.offset.reset": "earliest",
+        "auto.offset.reset": "latest",
         "value.deserializer": deserializer,
         "key.deserializer": None,
     }

@@ -23,6 +23,7 @@ fi
 CLICKHOUSE_USER="${CLICKHOUSE_USER:-admin}"
 CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD:-clickhouse}"
 CONNECTOR_CONFIG="${CONNECTOR_CONFIG:-configs/connect/clickhouse-sink.json}"
+CONNECTOR_NAME="${CONNECTOR_NAME:-clickhouse-sink}"
 TABLE_DDL="${TABLE_DDL:-sql/ddl/clickhouse_kafka_sink.sql}"
 TOPIC="${TOPIC:-kafka-events}"
 TABLE="${TABLE:-kafka_events}"
@@ -66,7 +67,23 @@ create_client_properties schema-registry
 echo "1) Apply ClickHouse sink connector config (${CONNECTOR_CONFIG})"
 curl -s -X PUT -H "Content-Type: application/json" \
   --data @"${CONNECTOR_CONFIG}" \
-  "${CONNECT_URL}/connectors/clickhouse-sink/config" | jq .
+  "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/config" | jq .
+
+echo "1a) Wait for connector ${CONNECTOR_NAME} to be RUNNING"
+connector_running='.connector.state == "RUNNING" and (.tasks | length) > 0 and all(.tasks[]; .state == "RUNNING")'
+status=""
+for _ in {1..12}; do
+  status="$(curl -s "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/status" || true)"
+  if echo "${status}" | jq -e "${connector_running}" >/dev/null; then
+    break
+  fi
+  sleep 5
+done
+if ! echo "${status}" | jq -e "${connector_running}" >/dev/null; then
+  echo "Connector ${CONNECTOR_NAME} is not RUNNING:" >&2
+  echo "${status}" | jq . >&2
+  exit 1
+fi
 
 echo "2) Ensure ClickHouse table exists (ON CLUSTER)"
 curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
