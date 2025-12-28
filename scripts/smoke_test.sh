@@ -12,16 +12,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ -f .env ]]; then
-  set -a
-  # Export vars from .env for downstream docker/curl commands.
-  # shellcheck disable=SC1091
-  source .env
-  set +a
+if [[ ! -f .env ]]; then
+  echo "Missing .env. Copy .env.example to .env and fill in values." >&2
+  exit 1
 fi
 
-CLICKHOUSE_USER="${CLICKHOUSE_USER:-admin}"
-CLICKHOUSE_PASSWORD="${CLICKHOUSE_PASSWORD:-clickhouse}"
+set -a
+# Export vars from .env for downstream docker/curl commands.
+# shellcheck disable=SC1091
+source .env
+set +a
+
+: "${CLICKHOUSE_USER:?Missing CLICKHOUSE_USER in .env}"
+: "${CLICKHOUSE_PASSWORD:?Missing CLICKHOUSE_PASSWORD in .env}"
+: "${KAFKA_CLIENT_SASL_USERNAME:?Missing KAFKA_CLIENT_SASL_USERNAME in .env}"
+: "${KAFKA_CLIENT_SASL_PASSWORD:?Missing KAFKA_CLIENT_SASL_PASSWORD in .env}"
+
 CONNECTOR_CONFIG="${CONNECTOR_CONFIG:-configs/connect/clickhouse-sink.json}"
 CONNECTOR_NAME="${CONNECTOR_NAME:-clickhouse-sink}"
 TABLE_DDL="${TABLE_DDL:-sql/ddl/clickhouse_kafka_sink.sql}"
@@ -31,9 +37,9 @@ SCHEMA_SUBJECT="${SCHEMA_SUBJECT:-${TOPIC}-value}"
 SCHEMA_REGISTRY_URL="${SCHEMA_REGISTRY_URL:-http://localhost:8081}"
 CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
 CLICKHOUSE_HTTP="${CLICKHOUSE_HTTP:-http://localhost:18123}"
+CLICKHOUSE_NODE1_HTTP="${CLICKHOUSE_NODE1_HTTP:-http://localhost:8123}"
+CLICKHOUSE_NODE2_HTTP="${CLICKHOUSE_NODE2_HTTP:-http://localhost:8124}"
 AVRO_SCHEMA='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}'
-KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME:-}"
-KAFKA_CLIENT_SASL_PASSWORD="${KAFKA_CLIENT_SASL_PASSWORD:-}"
 
 require() {
   command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1" >&2; exit 1; }
@@ -42,11 +48,6 @@ require() {
 require curl
 require jq
 require docker
-
-if [[ -z "${KAFKA_CLIENT_SASL_USERNAME}" || -z "${KAFKA_CLIENT_SASL_PASSWORD}" ]]; then
-  echo "Missing SASL client credentials. Set KAFKA_CLIENT_SASL_USERNAME and KAFKA_CLIENT_SASL_PASSWORD." >&2
-  exit 1
-fi
 
 create_client_properties() {
   local container="$1"
@@ -64,12 +65,35 @@ echo "0) Prepare Kafka client config inside containers"
 create_client_properties kafka-broker-1
 create_client_properties schema-registry
 
-echo "1) Apply ClickHouse sink connector config (${CONNECTOR_CONFIG})"
+echo "1) Ensure ClickHouse table exists (ON CLUSTER)"
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  -X POST --data-binary @"${TABLE_DDL}" \
+  "${CLICKHOUSE_HTTP}/?query=" >/dev/null
+
+echo "1a) Wait for ClickHouse table to exist on both nodes"
+table_exists=false
+for _ in {1..12}; do
+  node1="$(curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+    "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+default.${TABLE}")"
+  node2="$(curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+    "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+default.${TABLE}")"
+  if [[ "${node1}" == "1" && "${node2}" == "1" ]]; then
+    table_exists=true
+    break
+  fi
+  sleep 2
+done
+if [[ "${table_exists}" != "true" ]]; then
+  echo "ClickHouse table ${TABLE} did not appear on both nodes; check DDL replication." >&2
+  exit 1
+fi
+
+echo "2) Apply ClickHouse sink connector config (${CONNECTOR_CONFIG})"
 curl -s -X PUT -H "Content-Type: application/json" \
   --data @"${CONNECTOR_CONFIG}" \
   "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/config" | jq .
 
-echo "1a) Wait for connector ${CONNECTOR_NAME} to be RUNNING"
+echo "2a) Wait for connector ${CONNECTOR_NAME} to be RUNNING"
 connector_running='.connector.state == "RUNNING" and (.tasks | length) > 0 and all(.tasks[]; .state == "RUNNING")'
 status=""
 for _ in {1..12}; do
@@ -84,11 +108,6 @@ if ! echo "${status}" | jq -e "${connector_running}" >/dev/null; then
   echo "${status}" | jq . >&2
   exit 1
 fi
-
-echo "2) Ensure ClickHouse table exists (ON CLUSTER)"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
-  -X POST --data-binary @"${TABLE_DDL}" \
-  "${CLICKHOUSE_HTTP}/?query=" >/dev/null
 
 echo "3) Register Avro schema for topic ${TOPIC}"
 SCHEMA_BODY="$(mktemp)"

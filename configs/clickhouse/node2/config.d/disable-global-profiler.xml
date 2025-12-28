@@ -1,0 +1,5 @@
+<clickhouse>
+  <!-- Disable global profiler timers for local Docker to avoid timer resource limits. -->
+  <global_profiler_real_time_period_ns>0</global_profiler_real_time_period_ns>
+  <global_profiler_cpu_time_period_ns>0</global_profiler_cpu_time_period_ns>
+</clickhouse>

@@ -119,11 +119,11 @@ docker inspect "$(docker compose ps -q <service>)" --format '{{json .State.Healt
 ## Kafka
 ### Cluster topology
 ```
-                 Kafka KRaft Cluster
+              Kafka KRaft Cluster
 Controllers:  kafka-controller-1/2/3 (quorum on :9094)
    Brokers:   kafka-broker-1/2/3 (SASL on :9093 and host :19092/:29092/:39092)
  Schema Reg:  schema-registry (http://localhost:8081)
-      Connect: kafka-connect (REST http://localhost:8083)
+     Connect: kafka-connect (REST http://localhost:8083)
 ```
 
 #### Broker vs controller split
@@ -466,7 +466,7 @@ curl -s http://localhost:8083/connector-plugins | jq -r '.[].class'
 - No connectors are bundled by default; add them under `docker/kafka-connect/plugins/` before building.
 
 ### Example ClickHouse sink connector (single topic → single table, native plugin)
-- Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka-events` to table `kafka_events` via `topic2TableMap` for the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector. SASL auth is handled by the Kafka Connect worker config in `docker-compose.yml`, so the connector JSON does not need extra Kafka auth settings.)
+- Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka-events` to table `kafka_events` via `topic2TableMap` for the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector; the default `hostname` targets `clickhouse-haproxy` for load-balanced access and uses port `8123` because containers talk on the internal network, not the host-mapped `18123`. SASL auth is handled by the Kafka Connect worker config in `docker-compose.yml`, so the connector JSON does not need extra Kafka auth settings.)
 - Note: the native ClickHouse sink defaults to using the Kafka topic name as the table name unless `topic2TableMap` is provided. We keep hyphens in Kafka topics but underscores in ClickHouse table names, so the explicit map is required.
 - Prerequisites:
   - ClickHouse table exists: create via `sql/ddl/clickhouse_kafka_sink.sql`.
@@ -680,7 +680,7 @@ curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
 ## End-to-end smoke test: Schema Registry → Kafka → ClickHouse (Avro)
 - Prereqs: ClickHouse table exists (`sql/ddl/clickhouse_kafka_sink.sql`), ClickHouse sink connector is RUNNING, Schema Registry up. The bundled connector config already uses Avro converters.
 - Ensure SASL client credentials are set in `.env` or your shell: `KAFKA_CLIENT_SASL_USERNAME`, `KAFKA_CLIENT_SASL_PASSWORD`.
-- One-shot script (non-interactive) that runs these steps (sources `.env` and exports variables for child commands; fails fast if the connector is not RUNNING):
+- One-shot script (non-interactive) that runs these steps (requires `.env`, exports variables for child commands; fails fast if the connector is not RUNNING):
 ```bash
 scripts/smoke_test.sh
 ```
@@ -707,6 +707,19 @@ sasl.mechanism=PLAIN
 sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_CLIENT_SASL_USERNAME}" password="${KAFKA_CLIENT_SASL_PASSWORD}";
 EOF'
 ```
+- Ensure the replicated table exists on the cluster:
+```bash
+curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
+  'http://localhost:18123/?query='
+```
+- Wait for the table to exist on both nodes (avoid HAProxy routing to a node that has not applied the DDL yet):
+```bash
+curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  'http://localhost:8123/?query=EXISTS+TABLE+default.kafka_events'
+curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+  'http://localhost:8124/?query=EXISTS+TABLE+default.kafka_events'
+```
 - Apply the connector config (idempotent):
 ```bash
 curl -s -X PUT -H "Content-Type: application/json" \
@@ -716,12 +729,6 @@ curl -s -X PUT -H "Content-Type: application/json" \
 - Confirm the connector is RUNNING:
 ```bash
 curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq
-```
-- Ensure the replicated table exists on the cluster:
-```bash
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
-  'http://localhost:18123/?query='
 ```
 - Register the Avro schema for the topic:
 ```bash
@@ -788,8 +795,9 @@ docker compose logs kafka-controller-*
 docker compose logs schema-registry
 ```
 - Kafka Connect task FAILED:
-  - `Connection to ClickHouse is not active`: check ClickHouse/HAProxy health, credentials/port in connector config, and that the target table exists.
+  - `Connection to ClickHouse is not active`: check ClickHouse/HAProxy health, credentials, and that the connector uses the in-cluster endpoint (`hostname=clickhouse-haproxy`, `port=8123`) instead of the host-mapped `18123`; ensure the target table exists on both nodes.
   - `Missing required config`: fix connector JSON and re-`PUT`.
 - ClickHouse Keeper errors / `Coordination::Exception`: restart keeper first, then clickhouse-1/2; ensure keeper listens on `0.0.0.0:9181`; drop keeper/CH volumes only if you can discard state.
+- ClickHouse `CANNOT_CREATE_TIMER` / `Failed to create thread timer`: local Docker can exhaust timer resources; this repo disables the query profiler via `configs/clickhouse/users.d/disable-query-profiler.xml` and the global profiler via `configs/clickhouse/node1/config.d/disable-global-profiler.xml` plus `configs/clickhouse/node2/config.d/disable-global-profiler.xml`. How to verify: `docker compose restart clickhouse-1 clickhouse-2`, then confirm the logs no longer show `CANNOT_CREATE_TIMER`.
 - Avro serialization errors: schema mismatch; verify the registered schema and the payload shape in producers.
 - No rows in ClickHouse: confirm connector status (`/connectors/<name>/status`), topic has data, table exists ON CLUSTER, and queries use the right endpoint (`http://localhost:18123`).
