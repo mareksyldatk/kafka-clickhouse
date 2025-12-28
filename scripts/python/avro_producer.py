@@ -1,31 +1,29 @@
 #!/usr/bin/env python3
 import os
 import sys
-from datetime import datetime, timezone
 from confluent_kafka import Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
 from confluent_kafka.serialization import MessageField, SerializationContext
 
-BOOTSTRAP = os.getenv(
-    "BOOTSTRAP_SERVERS",
-    "localhost:19092,localhost:29092,localhost:39092",
-)
-SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
-TOPIC = os.getenv("TOPIC", "smoke-avro")
-MESSAGE_ID = os.getenv("MESSAGE_ID", "1")
-MESSAGE_TS = os.getenv("MESSAGE_TS")
+from util_time import utc_timestamp
+BOOTSTRAP = os.getenv("BOOTSTRAP_SERVERS")
+SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
+TOPIC = os.getenv("TOPIC")
+MESSAGE_ID = os.getenv("MESSAGE_ID")
 SASL_USERNAME = os.getenv("KAFKA_CLIENT_SASL_USERNAME")
 SASL_PASSWORD = os.getenv("KAFKA_CLIENT_SASL_PASSWORD")
 
 SCHEMA_STR = """
 {
   "type": "record",
-  "name": "SmokeAvro",
+  "name": "KafkaEvent",
   "namespace": "example",
   "fields": [
-    {"name": "id", "type": "string"},
-    {"name": "ts", "type": "string"}
+    {"name": "id", "type": "long"},
+    {"name": "source", "type": "string"},
+    {"name": "ts", "type": "string"},
+    {"name": "payload", "type": "string"}
   ]
 }
 """
@@ -36,10 +34,22 @@ def dict_to_avro(obj, ctx):
 
 
 def main() -> int:
-    if not SASL_USERNAME or not SASL_PASSWORD:
+    missing = []
+    required = {
+        "BOOTSTRAP_SERVERS": BOOTSTRAP,
+        "SCHEMA_REGISTRY_URL": SCHEMA_REGISTRY_URL,
+        "TOPIC": TOPIC,
+        "MESSAGE_ID": MESSAGE_ID,
+        "KAFKA_CLIENT_SASL_USERNAME": SASL_USERNAME,
+        "KAFKA_CLIENT_SASL_PASSWORD": SASL_PASSWORD,
+    }
+    for name, value in required.items():
+        if not value:
+            missing.append(name)
+    if missing:
         print(
-            "Missing SASL client credentials. "
-            "Set KAFKA_CLIENT_SASL_USERNAME and KAFKA_CLIENT_SASL_PASSWORD.",
+            "Missing required environment variables: "
+            + ", ".join(missing),
             file=sys.stderr,
         )
         return 1
@@ -57,8 +67,13 @@ def main() -> int:
         }
     )
     producer = Producer(config)
-    ts = MESSAGE_TS or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    value = {"id": MESSAGE_ID, "ts": ts}
+    ts = utc_timestamp()
+    value = {
+        "id": int(MESSAGE_ID),
+        "source": "python-producer",
+        "ts": ts,
+        "payload": "hello",
+    }
 
     payload = serializer(value, SerializationContext(TOPIC, MessageField.VALUE))
     producer.produce(topic=TOPIC, value=payload)

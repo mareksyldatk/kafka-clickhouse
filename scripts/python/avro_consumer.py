@@ -6,25 +6,40 @@ from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroDeserializer
 from confluent_kafka.serialization import MessageField, SerializationContext
 
-BOOTSTRAP = os.getenv(
-    "BOOTSTRAP_SERVERS",
-    "localhost:19092,localhost:29092,localhost:39092",
-)
-SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
-TOPIC = os.getenv("TOPIC", "smoke-avro")
-GROUP_ID = os.getenv("GROUP_ID", "smoke-avro-consumer")
-MAX_MESSAGES = int(os.getenv("MAX_MESSAGES", "5"))
+BOOTSTRAP = os.getenv("BOOTSTRAP_SERVERS")
+SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
+TOPIC = os.getenv("TOPIC")
+GROUP_ID = os.getenv("GROUP_ID")
+MAX_MESSAGES_RAW = os.getenv("MAX_MESSAGES")
 SASL_USERNAME = os.getenv("KAFKA_CLIENT_SASL_USERNAME")
 SASL_PASSWORD = os.getenv("KAFKA_CLIENT_SASL_PASSWORD")
 
 
 def main() -> int:
-    if not SASL_USERNAME or not SASL_PASSWORD:
+    missing = [
+        name
+        for name, value in {
+            "BOOTSTRAP_SERVERS": BOOTSTRAP,
+            "SCHEMA_REGISTRY_URL": SCHEMA_REGISTRY_URL,
+            "TOPIC": TOPIC,
+            "GROUP_ID": GROUP_ID,
+            "MAX_MESSAGES": MAX_MESSAGES_RAW,
+            "KAFKA_CLIENT_SASL_USERNAME": SASL_USERNAME,
+            "KAFKA_CLIENT_SASL_PASSWORD": SASL_PASSWORD,
+        }.items()
+        if not value
+    ]
+    if missing:
         print(
-            "Missing SASL client credentials. "
-            "Set KAFKA_CLIENT_SASL_USERNAME and KAFKA_CLIENT_SASL_PASSWORD.",
+            "Missing required environment variables: "
+            + ", ".join(missing),
             file=sys.stderr,
         )
+        return 1
+    try:
+        max_messages = int(MAX_MESSAGES_RAW)
+    except ValueError:
+        print("MAX_MESSAGES must be an integer.", file=sys.stderr)
         return 1
 
     schema_registry = SchemaRegistryClient({"url": SCHEMA_REGISTRY_URL})
@@ -51,7 +66,7 @@ def main() -> int:
 
     received = 0
     try:
-        while received < MAX_MESSAGES:
+        while received < max_messages:
             msg = consumer.poll(1.0)
             if msg is None:
                 continue

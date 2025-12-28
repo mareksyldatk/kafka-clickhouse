@@ -27,12 +27,18 @@ docker compose up -d
 ## Environment file
 - Docker Compose automatically loads `.env` at the repo root; use it to keep container names and host ports predictable across restarts.
 - The repo commits `.env.example` only; `.env` itself is git-ignored for local overrides.
-- Safe values: ports, volume paths, and other non-secret defaults.
+- `.env.example` is split into **REQUIRED CLUSTER SETTINGS** and **SMOKE TEST VARIABLES**; keep them in sync with your local changes. The smoke test block includes both host endpoints and in-cluster endpoints (for commands that run inside containers).
+- Before running any snippet that references `${...}`, run `source scripts/source_env.sh` in that shell.
 - `CLUSTER_ID` is required for KRaft (the broker uses it to format storage on first start); generate one with:
 ```bash
 docker run --rm confluentinc/cp-kafka:7.7.7 kafka-storage.sh random-uuid
 ```
 - Keep secrets out of `.env` and this repo; inject them at runtime via your shell, a locally stored untracked file, or a secrets manager.
+## Local environment
+- Load `.env` into your current shell:
+```bash
+source scripts/source_env.sh
+```
 
 ## Day-to-day ops
 - Start stack (builds Kafka Connect image first):
@@ -74,9 +80,8 @@ scripts/setup_python.sh
 ```bash
 docker compose logs -f kafka-broker-1
 ```
-Root log level is `WARN` to keep noise low; switch to `INFO` temporarily by exporting `KAFKA_LOG4J_ROOT_LOGLEVEL=INFO` before starting the stack:
+Root log level is `WARN` to keep noise low; switch to `INFO` temporarily by setting `KAFKA_LOG4J_ROOT_LOGLEVEL=INFO` in `.env` before starting the stack:
 ```bash
-export KAFKA_LOG4J_ROOT_LOGLEVEL=INFO
 docker compose up -d
 ```
 - Kafka Connect (worker/connector output):
@@ -141,7 +146,7 @@ Controllers:  kafka-controller-1/2/3 (quorum on :9094)
   - three controller-only nodes + three broker-only nodes (no ZooKeeper),
   - image `confluentinc/cp-kafka:7.7.7`,
   - uses `CLUSTER_ID` to format storage if the log directory is empty,
-  - config uses the `cp-kafka` Docker env var names (`KAFKA_PROCESS_ROLES`, `KAFKA_LISTENERS`, etc.).
+  - config follows the `cp-kafka` Docker env var naming conventions (see Confluent docs).
 - Endpoints:
   - brokers (host, SASL_PLAINTEXT): `localhost:19092`, `localhost:29092`, `localhost:39092`,
   - brokers (in-cluster): `kafka-broker-1:9093`, `kafka-broker-2:9093`, `kafka-broker-3:9093`,
@@ -182,18 +187,14 @@ Confirm the broker reaches `Kafka Server started`.
 docker compose logs -f kafka-broker-2
 ```
 Confirm there are no `Invalid username or password` errors.
-- Logs (WARN by default; repeat per node). To increase detail temporarily:
+- Logs (WARN by default; repeat per node). To increase detail temporarily, set `KAFKA_LOG4J_ROOT_LOGLEVEL=INFO` in `.env`, then restart:
 ```bash
-export KAFKA_LOG4J_ROOT_LOGLEVEL=INFO
 docker compose up -d
 ```
 
 #### Smoke tests
-- Prepare Kafka client properties inside the broker container (uses `.env` defaults if present):
+- Prepare Kafka client properties inside the broker container (uses values from `.env`):
 ```bash
-set -a
-source .env
-set +a
 docker compose exec -T \
   -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
   -e KAFKA_CLIENT_SASL_PASSWORD="${KAFKA_CLIENT_SASL_PASSWORD}" \
@@ -204,23 +205,23 @@ sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule require
 EOF'
 ```
 ##### Topic lifecycle
-- Create the topic (idempotent if it already exists):
+- Create the topic (idempotent if it already exists). Set `KAFKA_SMOKE_TOPIC` and `BOOTSTRAP_SERVERS_INTERNAL` in `.env` first:
 ```bash
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --create \
   --if-not-exists \
-  --topic smoke-kafka \
+  --topic "${KAFKA_SMOKE_TOPIC}" \
   --replication-factor 3 \
   --partitions 1
 ```
-- List topics (should include `smoke-kafka`):
+- List topics (should include `${KAFKA_SMOKE_TOPIC}`):
 ```bash
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --list
 ```
@@ -230,17 +231,17 @@ docker compose exec \
 ```bash
 docker compose exec -T \
   kafka-broker-1 kafka-console-producer \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --producer.config /tmp/client.properties \
-  --topic smoke-kafka
+  --topic "${KAFKA_SMOKE_TOPIC}"
 ```
 - Consume from the start (reads historical messages; exits after 10):
 ```bash
 docker compose exec -T \
   kafka-broker-1 kafka-console-consumer \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --consumer.config /tmp/client.properties \
-  --topic smoke-kafka \
+  --topic "${KAFKA_SMOKE_TOPIC}" \
   --from-beginning \
   --max-messages 10
 ```
@@ -251,7 +252,7 @@ docker compose exec -T \
 docker compose restart kafka-broker-1
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --list
 ```
@@ -276,7 +277,7 @@ docker compose logs -f schema-registry
 ##### List subjects
 - List registered subjects (empty `[]` if none yet). This also confirms Schema Registry can reach Kafka over SASL:
 ```bash
-curl -s http://localhost:8081/subjects
+curl -s "${SCHEMA_REGISTRY_URL}/subjects"
 ```
 
 ##### Schema lifecycle (no producers/consumers yet)
@@ -284,42 +285,40 @@ curl -s http://localhost:8081/subjects
 ```bash
 curl -s -X PUT -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"compatibility":"BACKWARD"}' \
-  http://localhost:8081/config/smoke-avro-value
+  "${SCHEMA_REGISTRY_URL}/config/${AVRO_SMOKE_SUBJECT}"
 ```
 - Register v1 schema (creates the subject):
 ```bash
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"schema":"{\"type\":\"record\",\"name\":\"SmokeAvro\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"ts\",\"type\":\"string\"}]}"}' \
-  http://localhost:8081/subjects/smoke-avro-value/versions
+  "${SCHEMA_REGISTRY_URL}/subjects/${AVRO_SMOKE_SUBJECT}/versions"
 ```
 - List subject versions (should show `1`):
 ```bash
-curl -s http://localhost:8081/subjects/smoke-avro-value/versions
+curl -s "${SCHEMA_REGISTRY_URL}/subjects/${AVRO_SMOKE_SUBJECT}/versions"
 ```
 - Print latest schema (full JSON, then the schema string):
 ```bash
-curl -s http://localhost:8081/subjects/smoke-avro-value/versions/latest
-curl -s http://localhost:8081/subjects/smoke-avro-value/versions/latest | jq -r .schema
+curl -s "${SCHEMA_REGISTRY_URL}/subjects/${AVRO_SMOKE_SUBJECT}/versions/latest"
+curl -s "${SCHEMA_REGISTRY_URL}/subjects/${AVRO_SMOKE_SUBJECT}/versions/latest" | jq -r .schema
 ```
 - Check compatibility for a candidate schema (adds a field with default = backward compatible):
 ```bash
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"schema":"{\"type\":\"record\",\"name\":\"SmokeAvro\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"ts\",\"type\":\"string\"},{\"name\":\"source\",\"type\":\"string\",\"default\":\"unknown\"}]}"}' \
-  http://localhost:8081/compatibility/subjects/smoke-avro-value/versions/latest
+  "${SCHEMA_REGISTRY_URL}/compatibility/subjects/${AVRO_SMOKE_SUBJECT}/versions/latest"
 ```
 - Register v2 schema (extends the subject):
 ```bash
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"schema":"{\"type\":\"record\",\"name\":\"SmokeAvro\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"ts\",\"type\":\"string\"},{\"name\":\"source\",\"type\":\"string\",\"default\":\"unknown\"}]}"}' \
-  http://localhost:8081/subjects/smoke-avro-value/versions
+  "${SCHEMA_REGISTRY_URL}/subjects/${AVRO_SMOKE_SUBJECT}/versions"
 ```
 
 ##### Avro messages (optional)
-- Prepare Kafka client properties inside the Schema Registry container (uses `.env` defaults if present):
+- Set `AVRO_SMOKE_TOPIC`, `AVRO_SMOKE_SUBJECT`, `BOOTSTRAP_SERVERS_INTERNAL`, and `SCHEMA_REGISTRY_URL_INTERNAL` in `.env` before running these steps.
+- Prepare Kafka client properties inside the Schema Registry container (uses values from `.env`):
 ```bash
-set -a
-source .env
-set +a
 docker compose exec -T \
   -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
   -e KAFKA_CLIENT_SASL_PASSWORD="${KAFKA_CLIENT_SASL_PASSWORD}" \
@@ -333,44 +332,45 @@ EOF'
 ```bash
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --create \
   --if-not-exists \
-  --topic smoke-avro \
+  --topic "${AVRO_SMOKE_TOPIC}" \
   --replication-factor 3 \
   --partitions 1
 ```
 - Produce a few records (auto-registers schema under `<topic>-value` and sends Avro):
 ```bash
+bash -lc 'source scripts/source_env.sh
 for id in 1 2 3 4 5; do
-  ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  printf '{"id":"%s","ts":"%s"}\n' "${id}" "${ts}"
+  ts="$(scripts/set_message_ts.sh)"
+  printf "{\"id\":\"%s\",\"ts\":\"%s\"}\n" "${id}" "${ts}"
   sleep 1
 done | docker compose exec -T \
   schema-registry kafka-avro-console-producer \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic smoke-avro \
-  --property schema.registry.url=http://schema-registry:8081 \
-  --property value.schema='{"type":"record","name":"SmokeAvro","namespace":"example","fields":[{"name":"id","type":"string"},{"name":"ts","type":"string"}]}' \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
+  --topic "${AVRO_SMOKE_TOPIC}" \
+  --property schema.registry.url="${SCHEMA_REGISTRY_URL_INTERNAL}" \
+  --property value.schema="{\"type\":\"record\",\"name\":\"SmokeAvro\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"ts\",\"type\":\"string\"}]}" \
   --producer.config /tmp/client.properties \
-  --producer-property enable.metrics.push=false
+  --producer-property enable.metrics.push=false'
 ```
 - Consume (prints decoded Avro records; remove `--from-beginning` to read only new data):
 ```bash
 docker compose exec -T \
   schema-registry kafka-avro-console-consumer \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic smoke-avro \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
+  --topic "${AVRO_SMOKE_TOPIC}" \
   --from-beginning \
-  --property schema.registry.url=http://schema-registry:8081 \
+  --property schema.registry.url="${SCHEMA_REGISTRY_URL_INTERNAL}" \
   --consumer.config /tmp/client.properties \
   --max-messages 5
 ```
 
 - Verify Schema Registry registered the subject:
 ```bash
-curl -s http://localhost:8081/subjects | jq -r '.[]' | rg '^smoke-avro-value$'
+curl -s "${SCHEMA_REGISTRY_URL}/subjects" | jq -r '.[]' | rg "^${AVRO_SMOKE_SUBJECT}$"
 ```
 
 ## Kafka Connect
@@ -397,17 +397,14 @@ docker compose logs -f kafka-connect
 ### Smoke tests
 - Check connectors list (should be `[]` initially):
 ```bash
-curl -s http://localhost:8083/connectors
+curl -s "${CONNECT_URL}/connectors"
 ```
 - Verify Connect worker status:
 ```bash
-curl -s http://localhost:8083/ | jq
+curl -s "${CONNECT_URL}/" | jq
 ```
-- Prepare Kafka client properties inside the broker container (uses `.env` defaults if present):
+- Prepare Kafka client properties inside the broker container (uses values from `.env`):
 ```bash
-set -a
-source .env
-set +a
 docker compose exec -T \
   -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
   -e KAFKA_CLIENT_SASL_PASSWORD="${KAFKA_CLIENT_SASL_PASSWORD}" \
@@ -421,7 +418,7 @@ EOF'
 ```bash
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --list | rg '^connect-(configs|offsets|status)$'
 ```
@@ -429,21 +426,21 @@ docker compose exec \
 ```bash
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --create --if-not-exists --topic connect-configs \
   --replication-factor 3 --partitions 1 \
   --config cleanup.policy=compact --config min.insync.replicas=2
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --create --if-not-exists --topic connect-offsets \
   --replication-factor 3 --partitions 25 \
   --config cleanup.policy=compact --config min.insync.replicas=2
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --create --if-not-exists --topic connect-status \
   --replication-factor 3 --partitions 5 \
@@ -461,7 +458,7 @@ docker compose up -d kafka-connect
 ```
 - Confirm plugin shows up:
 ```bash
-curl -s http://localhost:8083/connector-plugins | jq -r '.[].class'
+curl -s "${CONNECT_URL}/connector-plugins" | jq -r '.[].class'
 ```
 - No connectors are bundled by default; add them under `docker/kafka-connect/plugins/` before building.
 
@@ -478,17 +475,17 @@ docker compose up -d kafka-connect
 ```
   - Confirm the class is available:
 ```bash
-curl -s http://localhost:8083/connector-plugins | jq -r '.[].class' | rg ClickHouseSinkConnector
+curl -s "${CONNECT_URL}/connector-plugins" | jq -r '.[].class' | rg ClickHouseSinkConnector
 ```
 - Deploy (edit credentials/topic/table in the JSON if you changed them):
 ```bash
 curl -s -X PUT -H "Content-Type: application/json" \
   --data @configs/connect/clickhouse-sink.json \
-  http://localhost:8083/connectors/clickhouse-sink/config | jq
+  "${CONNECT_URL}/connectors/clickhouse-sink/config" | jq
 ```
 - Check status:
 ```bash
-curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq
+curl -s "${CONNECT_URL}/connectors/clickhouse-sink/status" | jq
 ```
 
 ### Python Avro tools
@@ -498,6 +495,11 @@ curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq
 scripts/setup_python.sh
 pyenv activate kafka-clickhouse
 ```
+#### Environment
+- Before running Python tools, load `.env` into your shell:
+```bash
+source scripts/source_env.sh
+```
 #### Helper runner
 - Run Python tools with `.env` loaded and the `kafka-clickhouse` pyenv activated:
 ```bash
@@ -506,71 +508,27 @@ scripts/run_python_tool.sh avro_producer.py
 
 #### Producer
 - Script: `scripts/python/avro_producer.py` (run via `scripts/run_python_tool.sh` for pyenv + `.env` compatibility).
-- Run (defaults match the local stack; includes current UTC timestamp):
+- Run (uses values from `.env` and auto-generates timestamps; matches the `KafkaEvent` schema used by `kafka-events`):
 ```bash
-export KAFKA_CLIENT_SASL_USERNAME="client"
-export KAFKA_CLIENT_SASL_PASSWORD="change_me"
 scripts/run_python_tool.sh avro_producer.py
 ```
-- Override defaults if needed:
-```bash
-BOOTSTRAP_SERVERS="localhost:19092,localhost:29092,localhost:39092" \
-SCHEMA_REGISTRY_URL="http://localhost:8081" \
-TOPIC="smoke-avro" \
-MESSAGE_ID="42" \
-MESSAGE_TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-KAFKA_CLIENT_SASL_USERNAME="client" \
-KAFKA_CLIENT_SASL_PASSWORD="change_me" \
-scripts/run_python_tool.sh avro_producer.py
-```
-To use the in-cluster listener instead (run inside the Compose network) set:
-```bash
-BOOTSTRAP_SERVERS="kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093" \
-KAFKA_CLIENT_SASL_USERNAME="client" \
-KAFKA_CLIENT_SASL_PASSWORD="change_me" \
-```
+- To change inputs (bootstrap servers, topic), update the corresponding keys in `.env` and re-run.
 
 #### Consumer
 - Script: `scripts/python/avro_consumer.py` (run via `scripts/run_python_tool.sh` for pyenv + `.env` compatibility).
-- Run (defaults match the local stack):
+- Run (uses values from `.env`):
 ```bash
-export KAFKA_CLIENT_SASL_USERNAME="client"
-export KAFKA_CLIENT_SASL_PASSWORD="change_me"
 scripts/run_python_tool.sh avro_consumer.py
 ```
-- Override defaults if needed:
-```bash
-BOOTSTRAP_SERVERS="localhost:19092,localhost:29092,localhost:39092" \
-SCHEMA_REGISTRY_URL="http://localhost:8081" \
-TOPIC="smoke-avro" \
-GROUP_ID="smoke-avro-consumer" \
-MAX_MESSAGES="5" \
-KAFKA_CLIENT_SASL_USERNAME="client" \
-KAFKA_CLIENT_SASL_PASSWORD="change_me" \
-scripts/run_python_tool.sh avro_consumer.py
-```
-To use the in-cluster listener instead (run inside the Compose network) set:
-```bash
-BOOTSTRAP_SERVERS="kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093" \
-KAFKA_CLIENT_SASL_USERNAME="client" \
-KAFKA_CLIENT_SASL_PASSWORD="change_me" \
-```
+- To change inputs (bootstrap servers, topic, group, max messages), update the corresponding keys in `.env` and re-run.
 
 #### ClickHouse query (HTTP via HAProxy)
 - Script: `scripts/python/query_clickhouse.py`
-- Run (defaults match the local stack):
+- Run (uses values from `.env`):
 ```bash
-python scripts/python/query_clickhouse.py
+scripts/run_python_tool.sh query_clickhouse.py
 ```
-- Override defaults if needed:
-```bash
-CLICKHOUSE_HTTP="http://localhost:18123" \
-CLICKHOUSE_USER="admin" \
-CLICKHOUSE_PASSWORD="clickhouse" \
-TABLE="kafka_events" \
-LIMIT=10 \
-python scripts/python/query_clickhouse.py
-```
+- To change the endpoint or query scope, update `CLICKHOUSE_HTTP`, `TABLE`, and `LIMIT` in `.env` and re-run.
 
 ## ClickHouse
 - Role:
@@ -585,7 +543,7 @@ python scripts/python/query_clickhouse.py
     - ClickHouse Keeper: `localhost:9181`
   - Tip: point BI/HTTP clients (e.g., Metabase) at the HAProxy endpoint; it health-checks `/ping` and round-robins the two nodes.
 ### Credentials
-- HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`; defaults in `.env.example` are `admin` / `clickhouse`)
+- HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`)
   - Update `.env`, then start ClickHouse (see Run). Changing credentials later requires recreating the container.
   - Stock `default` user is removed; `configs/clickhouse/users.d/default-user.xml` creates `admin` from env vars. Add your own users as overrides in `configs/clickhouse/users.d/` if needed.
 ### Config overrides
@@ -636,32 +594,33 @@ docker compose logs -f clickhouse-2
 ### Smoke tests
 - Ping via HAProxy (returns `Ok.`):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" http://localhost:18123/ping
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" "${CLICKHOUSE_HTTP}/ping"
   ```
 - Ping a specific node if needed:
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" http://localhost:8123/ping
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" "${CLICKHOUSE_NODE1_HTTP}/ping"
   ```
 - Healthcheck note: the container reports healthy after this succeeds (it may take a few seconds on first start):
 ```bash
-clickhouse-client --query "SELECT 1"
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+    "${CLICKHOUSE_HTTP}/?query=SELECT+1"\
 ```
 - Confirm effective user/profile (verifies overrides are applied):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    'http://localhost:18123/?query=SELECT+currentUser(),+currentProfiles()'
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+    "${CLICKHOUSE_HTTP}/?query=SELECT+currentUser(),+currentProfiles()"
   ```
 - Verify replication and persistence:
   ```bash
   # create a test table ON CLUSTER and write one row (ReplicatedMergeTree)
-  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    -X POST -d '' 'http://localhost:18123/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_clickhouse+ON+CLUSTER+clickhouse_cluster(id+UInt32)+ENGINE=ReplicatedMergeTree('"'"/clickhouse/{shard}/smoke_clickhouse"'"','"'"{replica}"'"')+ORDER+BY+ts+DESC'
-  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    -X POST -d '' 'http://localhost:18123/?query=INSERT+INTO+smoke_clickhouse+VALUES(1)'
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+    -X POST -d '' "${CLICKHOUSE_HTTP}/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_test_replication+ON+CLUSTER+clickhouse_cluster(id+UInt32)+ENGINE=ReplicatedMergeTree(%27/clickhouse/{shard}/smoke_test_replication%27,%27{replica}%27)+ORDER+BY+id"
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+    -X POST -d '' "${CLICKHOUSE_HTTP}/?query=INSERT+INTO+smoke_test_replication+VALUES(1)"
 
   # read from node 2 to confirm replication
-  curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-    'http://localhost:8124/?query=SELECT+*+FROM+smoke_clickhouse'
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+    "${CLICKHOUSE_NODE2_HTTP}/?query=SELECT+*+FROM+smoke_test_replication"
   ```
 - Play UI (opens in browser; uses admin credentials in query params):
   [http://localhost:8123/play?user=admin&password=clickhouse](http://localhost:8123/play?user=admin&password=clickhouse) (update the URL if you change credentials)
@@ -671,25 +630,26 @@ clickhouse-client --query "SELECT 1"
 - When to create: after ClickHouse and ClickHouse Keeper are up and before wiring a Kafka Connect sink; run once per environment.
 - How to create on all replicas (preferred): run ON CLUSTER once from any node:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
-  'http://localhost:18123/?query='
+  "${CLICKHOUSE_HTTP}/?query="
 ```
 - If your Kafka messages use different columns/types, edit `sql/ddl/clickhouse_kafka_sink.sql` accordingly, then rerun the command above.
 
 ## End-to-end smoke test: Schema Registry → Kafka → ClickHouse (Avro)
-- Prereqs: ClickHouse table exists (`sql/ddl/clickhouse_kafka_sink.sql`), ClickHouse sink connector is RUNNING, Schema Registry up. The bundled connector config already uses Avro converters.
-- Ensure SASL client credentials are set in `.env` or your shell: `KAFKA_CLIENT_SASL_USERNAME`, `KAFKA_CLIENT_SASL_PASSWORD`.
-- One-shot script (non-interactive) that runs these steps (requires `.env`, exports variables for child commands; fails fast if the connector is not RUNNING):
+- Prereqs: ClickHouse table exists (`sql/ddl/clickhouse_kafka_sink.sql`), ClickHouse sink connector is RUNNING, Schema Registry up. The bundled connector config already uses Avro converters. Set `TOPIC` and `SCHEMA_SUBJECT` in `.env` if you changed them.
+- Ensure `.env` includes `KAFKA_CLIENT_SASL_USERNAME` and `KAFKA_CLIENT_SASL_PASSWORD`.
+- Load `.env` into your shell before running any commands in this section:
+```bash
+source scripts/source_env.sh
+```
+- One-shot script (non-interactive) that runs these steps (expects `.env` already loaded; fails fast if the connector is not RUNNING):
 ```bash
 scripts/smoke_test.sh
 ```
-- Topic name uses a hyphen (`kafka-events`) to avoid Kafka’s metrics collision warning for dots vs underscores.
+- Topic name uses a hyphen (see `TOPIC` in `.env`) to avoid Kafka’s metrics collision warning for dots vs underscores.
 - Prepare Kafka client properties inside containers for the manual Kafka CLI steps:
 ```bash
-set -a
-source .env
-set +a
 docker compose exec -T \
   -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
   -e KAFKA_CLIENT_SASL_PASSWORD="${KAFKA_CLIENT_SASL_PASSWORD}" \
@@ -709,49 +669,49 @@ EOF'
 ```
 - Ensure the replicated table exists on the cluster:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_sink.sql \
-  'http://localhost:18123/?query='
+  "${CLICKHOUSE_HTTP}/?query="
 ```
 - Wait for the table to exist on both nodes (avoid HAProxy routing to a node that has not applied the DDL yet):
 ```bash
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:8123/?query=EXISTS+TABLE+default.kafka_events'
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:8124/?query=EXISTS+TABLE+default.kafka_events'
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+default.${TABLE}"
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+default.${TABLE}"
 ```
 - Apply the connector config (idempotent):
 ```bash
 curl -s -X PUT -H "Content-Type: application/json" \
   --data @configs/connect/clickhouse-sink.json \
-  http://localhost:8083/connectors/clickhouse-sink/config | jq
+  "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/config" | jq
 ```
 - Confirm the connector is RUNNING:
 ```bash
-curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq
+curl -s "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/status" | jq
 ```
 - Register the Avro schema for the topic:
 ```bash
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data '{"schema":"{\"type\":\"record\",\"name\":\"KafkaEvent\",\"namespace\":\"example\",\"fields\":[{\"name\":\"id\",\"type\":\"long\"},{\"name\":\"source\",\"type\":\"string\"},{\"name\":\"ts\",\"type\":\"string\"},{\"name\":\"payload\",\"type\":\"string\"}]}"}' \
-  http://localhost:8081/subjects/kafka-events-value/versions
+  "${SCHEMA_REGISTRY_URL}/subjects/${SCHEMA_SUBJECT}/versions"
 ```
 - Ensure the Kafka topic exists:
 ```bash
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
-  --create --if-not-exists --topic kafka-events \
+  --create --if-not-exists --topic "${TOPIC}" \
   --replication-factor 3 --partitions 1
 ```
 - Produce Avro messages (schema is registered; value converter is Avro):
 ```bash
 docker compose exec -T \
   schema-registry kafka-avro-console-producer \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
-  --topic kafka-events \
-  --property schema.registry.url=http://schema-registry:8081 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
+  --topic "${TOPIC}" \
+  --property schema.registry.url="${SCHEMA_REGISTRY_URL_INTERNAL}" \
   --property value.schema='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}' \
   --producer.config /tmp/client.properties \
   --producer-property enable.metrics.push=false
@@ -760,7 +720,7 @@ docker compose exec -T \
 ```bash
 payloads=(hello world foo bar baz)
 for id in 1 2 3 4 5; do
-  ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  ts="$(scripts/set_message_ts.sh)"
   payload="${payloads[$((id - 1))]}"
   printf '{"id":%s,"source":"smoke","ts":"%s","payload":"%s"}\n' "${id}" "${ts}" "${payload}"
   sleep 1
@@ -768,14 +728,14 @@ done
 ```
 - Verify rows landed in ClickHouse:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:18123/?query=SELECT+count(),+min(id),+max(id)+FROM+kafka_events'
-curl -sS -u "${CLICKHOUSE_USER:-admin}:${CLICKHOUSE_PASSWORD:-clickhouse}" \
-  'http://localhost:18123/?query=SELECT+*+FROM+kafka_events+ORDER+BY+ts+DESC+LIMIT+5'
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SELECT+count(),+min(id),+max(id)+FROM+${TABLE}"
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
 ```
 - If anything fails, check connector status/logs:
 ```bash
-curl -s http://localhost:8083/connectors/clickhouse-sink/status | jq
+curl -s "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/status" | jq
 docker compose logs -f kafka-connect
 ```
 - Further reading on Kafka data formats: https://www.automq.com/blog/avro-vs-json-schema-vs-protobuf-kafka-data-formats
@@ -800,4 +760,4 @@ docker compose logs schema-registry
 - ClickHouse Keeper errors / `Coordination::Exception`: restart keeper first, then clickhouse-1/2; ensure keeper listens on `0.0.0.0:9181`; drop keeper/CH volumes only if you can discard state.
 - ClickHouse `CANNOT_CREATE_TIMER` / `Failed to create thread timer`: local Docker can exhaust timer resources; this repo disables the query profiler via `configs/clickhouse/users.d/disable-query-profiler.xml` and the global profiler via `configs/clickhouse/node1/config.d/disable-global-profiler.xml` plus `configs/clickhouse/node2/config.d/disable-global-profiler.xml`. How to verify: `docker compose restart clickhouse-1 clickhouse-2`, then confirm the logs no longer show `CANNOT_CREATE_TIMER`.
 - Avro serialization errors: schema mismatch; verify the registered schema and the payload shape in producers.
-- No rows in ClickHouse: confirm connector status (`/connectors/<name>/status`), topic has data, table exists ON CLUSTER, and queries use the right endpoint (`http://localhost:18123`).
+- No rows in ClickHouse: confirm connector status (`/connectors/<name>/status`), topic has data, table exists ON CLUSTER, and queries use the right endpoint (`${CLICKHOUSE_HTTP}`).

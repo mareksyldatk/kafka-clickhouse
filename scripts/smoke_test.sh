@@ -12,33 +12,23 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ ! -f .env ]]; then
-  echo "Missing .env. Copy .env.example to .env and fill in values." >&2
-  exit 1
-fi
-
-set -a
-# Export vars from .env for downstream docker/curl commands.
-# shellcheck disable=SC1091
-source .env
-set +a
-
 : "${CLICKHOUSE_USER:?Missing CLICKHOUSE_USER in .env}"
 : "${CLICKHOUSE_PASSWORD:?Missing CLICKHOUSE_PASSWORD in .env}"
 : "${KAFKA_CLIENT_SASL_USERNAME:?Missing KAFKA_CLIENT_SASL_USERNAME in .env}"
 : "${KAFKA_CLIENT_SASL_PASSWORD:?Missing KAFKA_CLIENT_SASL_PASSWORD in .env}"
-
-CONNECTOR_CONFIG="${CONNECTOR_CONFIG:-configs/connect/clickhouse-sink.json}"
-CONNECTOR_NAME="${CONNECTOR_NAME:-clickhouse-sink}"
-TABLE_DDL="${TABLE_DDL:-sql/ddl/clickhouse_kafka_sink.sql}"
-TOPIC="${TOPIC:-kafka-events}"
-TABLE="${TABLE:-kafka_events}"
-SCHEMA_SUBJECT="${SCHEMA_SUBJECT:-${TOPIC}-value}"
-SCHEMA_REGISTRY_URL="${SCHEMA_REGISTRY_URL:-http://localhost:8081}"
-CONNECT_URL="${CONNECT_URL:-http://localhost:8083}"
-CLICKHOUSE_HTTP="${CLICKHOUSE_HTTP:-http://localhost:18123}"
-CLICKHOUSE_NODE1_HTTP="${CLICKHOUSE_NODE1_HTTP:-http://localhost:8123}"
-CLICKHOUSE_NODE2_HTTP="${CLICKHOUSE_NODE2_HTTP:-http://localhost:8124}"
+: "${CONNECTOR_CONFIG:?Missing CONNECTOR_CONFIG in .env}"
+: "${CONNECTOR_NAME:?Missing CONNECTOR_NAME in .env}"
+: "${TABLE_DDL:?Missing TABLE_DDL in .env}"
+: "${TOPIC:?Missing TOPIC in .env}"
+: "${TABLE:?Missing TABLE in .env}"
+: "${SCHEMA_SUBJECT:?Missing SCHEMA_SUBJECT in .env}"
+: "${SCHEMA_REGISTRY_URL:?Missing SCHEMA_REGISTRY_URL in .env}"
+: "${SCHEMA_REGISTRY_URL_INTERNAL:?Missing SCHEMA_REGISTRY_URL_INTERNAL in .env}"
+: "${CONNECT_URL:?Missing CONNECT_URL in .env}"
+: "${CLICKHOUSE_HTTP:?Missing CLICKHOUSE_HTTP in .env}"
+: "${CLICKHOUSE_NODE1_HTTP:?Missing CLICKHOUSE_NODE1_HTTP in .env}"
+: "${CLICKHOUSE_NODE2_HTTP:?Missing CLICKHOUSE_NODE2_HTTP in .env}"
+: "${BOOTSTRAP_SERVERS_INTERNAL:?Missing BOOTSTRAP_SERVERS_INTERNAL in .env}"
 AVRO_SCHEMA='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}'
 
 require() {
@@ -120,23 +110,23 @@ rm -f "${SCHEMA_BODY}"
 echo "4) Ensure Kafka topic ${TOPIC} exists"
 docker compose exec \
   kafka-broker-1 kafka-topics \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --command-config /tmp/client.properties \
   --create --if-not-exists --topic "${TOPIC}" \
   --replication-factor 3 --partitions 1
 
 echo "5) Produce Avro sample messages"
 for id in 1 2 3 4 5; do
-  ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  ts="$(./scripts/set_message_ts.sh)"
   payloads=(hello world foo bar baz)
   payload="${payloads[$((id - 1))]}"
   printf '{"id":%s,"source":"smoke","ts":"%s","payload":"%s"}\n' "${id}" "${ts}" "${payload}"
   sleep 1
 done | docker compose exec -T \
   schema-registry kafka-avro-console-producer \
-  --bootstrap-server kafka-broker-1:9093,kafka-broker-2:9093,kafka-broker-3:9093 \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --topic "${TOPIC}" \
-  --property schema.registry.url=http://schema-registry:8081 \
+  --property schema.registry.url="${SCHEMA_REGISTRY_URL_INTERNAL}" \
   --property value.schema='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}' \
   --producer.config /tmp/client.properties \
   --producer-property enable.metrics.push=false
