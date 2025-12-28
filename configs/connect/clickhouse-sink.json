@@ -2,7 +2,7 @@
   "connector.class": "com.clickhouse.kafka.connect.ClickHouseSinkConnector",
   "tasks.max": "1",
   "topics": "kafka-events",
-  "hostname": "clickhouse-1",
+  "hostname": "clickhouse-haproxy",
   "port": "8123",
   "username": "admin",
   "password": "clickhouse",
