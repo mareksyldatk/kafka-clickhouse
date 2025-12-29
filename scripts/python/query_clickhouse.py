@@ -3,7 +3,7 @@
 Minimal ClickHouse query helper for local dev using clickhouse-connect.
 
 Reads CLICKHOUSE_HTTP, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD,
-TABLE, LIMIT and prints the result rows.
+KAFKA_AVRO_EVENTS_TABLE, LIMIT and prints the result rows.
 """
 import os
 import sys
@@ -15,7 +15,7 @@ import clickhouse_connect
 CLICKHOUSE_HTTP = os.getenv("CLICKHOUSE_HTTP")
 CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER")
 CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
-TABLE = os.getenv("TABLE")
+KAFKA_AVRO_EVENTS_TABLE = os.getenv("KAFKA_AVRO_EVENTS_TABLE")
 LIMIT_RAW = os.getenv("LIMIT")
 
 
@@ -42,7 +42,7 @@ def main() -> int:
             "CLICKHOUSE_HTTP": CLICKHOUSE_HTTP,
             "CLICKHOUSE_USER": CLICKHOUSE_USER,
             "CLICKHOUSE_PASSWORD": CLICKHOUSE_PASSWORD,
-            "TABLE": TABLE,
+            "KAFKA_AVRO_EVENTS_TABLE": KAFKA_AVRO_EVENTS_TABLE,
             "LIMIT": LIMIT_RAW,
         }.items()
         if not value
@@ -63,7 +63,9 @@ def main() -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    query = f"SELECT * FROM {TABLE} ORDER BY id LIMIT {limit}"
+    query = (
+        f"SELECT * FROM {KAFKA_AVRO_EVENTS_TABLE} ORDER BY id LIMIT {limit}"
+    )
     result = client.query(query)
     # Print header then rows as TSV for readability
     headers = result.column_names
