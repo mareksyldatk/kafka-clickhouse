@@ -18,6 +18,7 @@ docker compose up -d
 - `sql/` — ClickHouse schemas and setup scripts (DDLs live under `sql/ddl/`).
 - `docker/` — custom images build contexts (e.g., Kafka Connect plugins).
 - `scripts/` — helper scripts for local workflows.
+- `docs/clickhouse/` — short ClickHouse developer notes and references.
 
 ## How to use this scaffold
 1) Copy `.env.example` to `.env` and set required values (e.g., `CLUSTER_ID`).
