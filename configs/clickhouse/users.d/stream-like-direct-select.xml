@@ -1,8 +1,0 @@
-<yandex>
-  <profiles>
-    <default>
-      <!-- Enable direct SELECT on Kafka/stream-like engines for local dev UI queries. -->
-      <stream_like_engine_allow_direct_select>1</stream_like_engine_allow_direct_select>
-    </default>
-  </profiles>
-</yandex>

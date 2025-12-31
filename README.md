@@ -581,7 +581,6 @@ scripts/run_python_tool.sh query_clickhouse.py
   - `cluster.xml` defines the `clickhouse_cluster` with two replicas.
   - `00-macros.xml` sets `shard`/`replica` macros per node.
 - Default admin user for local dev lives in `configs/clickhouse/users.d/default-user.xml` (matches `.env.example` credentials).
-- Stream-like engine direct selects are enabled for local dev via `configs/clickhouse/users.d/stream-like-direct-select.xml` (required to query Kafka engine tables in the UI without per-query SETTINGS).
 - To activate or add overrides: place a `.xml` file in the node-specific folders above (or shared users.d), then restart:
 ```bash
 docker compose restart clickhouse
