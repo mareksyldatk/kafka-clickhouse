@@ -129,7 +129,7 @@ SETTINGS
 ```
 Usage example (materialized view sink):
 ```sql
-CREATE MATERIALIZED VIEW kafka_internal.mv_kafka_json_events TO kafka_avro_events AS
+CREATE MATERIALIZED VIEW kafka_internal.mv_kafka_json_events TO default.kafka_json_events_store AS
 SELECT * FROM kafka_internal.kafka_json_events;
 ```
 

@@ -644,10 +644,10 @@ docker compose logs -f clickhouse-2
   curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
     "${CLICKHOUSE_NODE2_HTTP}/?query=SELECT+*+FROM+smoke_test_replication"
   ```
-- Kafka engine read (ingest-only JSON; consumes messages from Kafka):
+- Kafka JSON store read (stable; queries persisted rows):
   ```bash
   curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
-    "${CLICKHOUSE_NODE1_HTTP}/?query=SELECT+*+FROM+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}+LIMIT+5+SETTINGS+stream_like_engine_allow_direct_select=1"
+    "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
   ```
 - Play UI (opens in browser; uses admin credentials in query params):
   [http://localhost:8123/play?user=admin&password=clickhouse](http://localhost:8123/play?user=admin&password=clickhouse) (update the URL if you change credentials)
@@ -655,16 +655,13 @@ docker compose logs -f clickhouse-2
 ### Example table for Kafka ingestion
 - DDLs:
   - `sql/ddl/clickhouse_kafka_avro_events.sql` defines the replicated `kafka_avro_events` table (ReplicatedMergeTree with macros).
-- `sql/ddl/clickhouse_kafka_json_events.sql` defines the ingest-only `kafka_internal.kafka_json_events` Kafka engine table (JSON).
-- `sql/ddl/clickhouse_kafka_json_events_store_table.sql` defines a persisted `kafka_json_events_store` table and `sql/ddl/clickhouse_kafka_json_events_store_mv.sql` defines a materialized view that copies from the Kafka engine table for stable UI queries.
+  - `sql/ddl/clickhouse_kafka_json_events.sql` defines the ingest-only `kafka_internal.kafka_json_events` Kafka engine table (JSON).
+  - `sql/ddl/clickhouse_kafka_json_events_store_table.sql` defines a persisted `kafka_json_events_store` table and `sql/ddl/clickhouse_kafka_json_events_store_mv.sql` defines a materialized view that copies from the Kafka engine table for stable UI queries.
 - `kafka_internal.kafka_json_events` reads from the `kafka-json-events` topic using `JSONEachRow`; update the Kafka settings (topic, SASL credentials, format) if your environment differs.
 - The Kafka engine table is a stream reader (not durable storage). Use `kafka_json_events_store` for stable querying.
 - When to create: after ClickHouse and ClickHouse Keeper are up and before wiring a Kafka Connect sink; run once per environment.
 - How to create on all replicas (preferred): run ON CLUSTER once from any node:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
-  -X POST --data-binary @sql/ddl/clickhouse_kafka_internal_db.sql \
-  "${CLICKHOUSE_HTTP}/?query="
 curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_internal_db.sql \
   "${CLICKHOUSE_HTTP}/?query="
@@ -681,7 +678,7 @@ curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_mv.sql \
   "${CLICKHOUSE_HTTP}/?query="
 ```
-- If your Kafka messages use different columns/types, edit both DDL files accordingly, then rerun the command above.
+- If your Kafka messages use different columns/types, update the relevant DDLs (Avro, JSON engine, store table, MV), then rerun the commands above.
 
 ## End-to-end smoke test: Schema Registry → Kafka → ClickHouse (Avro)
 - Prereqs: ClickHouse tables exist (`sql/ddl/clickhouse_kafka_internal_db.sql`, `sql/ddl/clickhouse_kafka_avro_events.sql`, `sql/ddl/clickhouse_kafka_json_events.sql`, `sql/ddl/clickhouse_kafka_json_events_store_table.sql`, `sql/ddl/clickhouse_kafka_json_events_store_mv.sql`), ClickHouse sink connector is RUNNING, Schema Registry up. The bundled connector config already uses Avro converters. Set `KAFKA_AVRO_EVENTS_TOPIC` and `KAFKA_AVRO_EVENTS_SUBJECT` in `.env` if you changed them.
@@ -765,7 +762,7 @@ docker compose exec \
   --create --if-not-exists --topic "${KAFKA_AVRO_EVENTS_TOPIC}" \
   --replication-factor 3 --partitions 1
 ```
-- Create the JSON topic for `kafka_json_events`:
+- Create the JSON topic for `kafka_internal.kafka_json_events`:
 ```bash
 docker compose exec \
   kafka-broker-1 kafka-topics \

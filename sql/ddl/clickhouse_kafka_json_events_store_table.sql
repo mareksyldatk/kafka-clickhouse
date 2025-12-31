@@ -1,5 +1,5 @@
 -- Persisted JSON events for stable querying (Kafka engine -> MergeTree).
--- Requires kafka_json_events table to exist first.
+-- Standalone storage table; the materialized view handles ingestion.
 
 CREATE TABLE IF NOT EXISTS kafka_json_events_store ON CLUSTER clickhouse_cluster (
     id UInt64,
