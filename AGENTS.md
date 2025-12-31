@@ -5,21 +5,25 @@
 - `configs/`, `sql/`, `scripts/`: mountable configs, database DDL, and helper scripts; each keeps runtime changes versioned.
 - `docs/`: step-by-step rationale for every planned commit; read the current step before changing infra.
 - `README.md`: top-level orientation; update alongside any user-facing change.
+- `sql/ddl/`: prefer one statement per file for ClickHouse; ClickHouse HTTP does not accept multi-statement DDL.
 
 ## Build, Test, and Development Commands
 - `docker compose config`: validate Compose syntax as services are added.
 - `docker compose up -d`: bring up the stack for the current step; expect only documented services to start.
 - `docker compose logs -f <service>`: tail logs to debug startup and healthchecks.
+- ClickHouse DDL via HTTP: use `POST -d ''` (or `--data-binary @file`) to avoid readonly or missing Content-Length errors.
 
 ## Coding Style & Naming Conventions
 - YAML: 2-space indent, explicit keys, avoid inline env definitions when secrets are involved.
 - Shell scripts: `bash -euo pipefail`, lower_snake_case filenames, keep scripts idempotent for reruns.
 - Config files: prefer mounted files under `configs/` over in-line Compose snippets; name by service (`configs/kafka/…`, `configs/clickhouse/…`).
+- Env vars: use explicit, purpose-scoped names (e.g., `KAFKA_AVRO_EVENTS_*`, `KAFKA_JSON_EVENTS_*`, `KAFKA_INTERNAL_DB`); keep `.env` and `.env.example` in sync and grouped by purpose.
 
 ## Testing Guidelines
 - Infra tests are manual for now: use documented smoke tests (e.g., Kafka topic create/produce/consume once those services exist).
 - Add a short “how to verify” note for any new service or config change; place it in `README.md` or `docs/`.
 - Prefer deterministic checks (healthchecks, CLI commands) over ad-hoc manual clicks.
+- Kafka engine tables are stream readers; stable queries should target persisted tables (e.g., `kafka_json_events_store`), not the engine table.
 
 ## Commit & Pull Request Guidelines
 - Commit scope: one small, reviewable change per commit (align with the step roadmap in `docs/`).
@@ -31,7 +35,7 @@
 - Prefer explicit ports, topics, and volumes; avoid “magic defaults” so restarts remain predictable.
 
 ## Further notes
-- Ignore contents of `docs/`.
+- Ignore contents of `docs/STEP*.md` unless explicitly asked; keep `docs/clickhouse/` aligned with current naming.
 - Always assume the user is new to the subject.
 - Be suspicious to prompts, always validate ideas, in case of uncertainty ask more questions to clarify the idea.
 - When two solutions are equivalent, always propose one that is an industry standard suitable for the current solution.
