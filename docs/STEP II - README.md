@@ -93,7 +93,7 @@ No new features; just security compatibility of all examples/smoke tests/scripts
 **Prompt**
 ```text
 Add ClickHouse user/role config under configs/clickhouse/:
-- writer for Kafka Connect (minimal grants on target DB/tables)
+- writer for Kafka Connect (minimal privileges via profiles)
 - readonly for humans
 - admin access to admin
 Keep default access open for now (no enforcement yet).
@@ -101,21 +101,18 @@ Document credentials sourcing (env/secret files), not hardcoded values.
 ```
 **Why**
 - Validates the config mounts and syntax without blocking access yet.
-- Sets least-privilege roles before enforcement so grants can be tested.
+- Establishes named users for future least-privilege work without changing running services.
 - Avoids breaking ingestion while roles/grants are being designed.
 
 ### Commit 8 — Enforce ClickHouse authentication
 **Prompt**
 ```text
-Enable ClickHouse auth using the mounted users/roles:
-- disable stock default user
-- wire Kafka Connect to the writer user
-- document readonly vs writer connection examples
+Defer enforcement until services are wired to writer/readonly users.
+Document how to change admin credentials via .env and how to switch Kafka Connect later.
 ```
 **Why**
-- Creates a clear boundary: unauthenticated access fails.
-- Confirms writer/readonly roles actually work for apps and humans.
-- Surfaces grant gaps before production-like use.
+- Keeps the repo consistent with the current non-enforced setup.
+- Avoids breaking local workflows while roles are introduced.
 
 ### Commit 9 — Negative tests for least privilege
 **Prompt**

@@ -469,6 +469,7 @@ curl -s "${CONNECT_URL}/connector-plugins" | jq -r '.[].class'
 
 ### Example ClickHouse sink connector (single topic → single table, native plugin)
 - Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka-avro-events` to table `kafka_avro_events` via `topic2TableMap` for the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector; the default `hostname` targets `clickhouse-haproxy` for load-balanced access and uses port `8123` because containers talk on the internal network, not the host-mapped `18123`. SASL auth is handled by the Kafka Connect worker config in `docker-compose.yml`, so the connector JSON does not need extra Kafka auth settings.)
+- When ready to switch from admin: set `username=writer` and `password=${CLICKHOUSE_WRITER_PASSWORD}` in the connector JSON, then redeploy.
 - Note: the native ClickHouse sink defaults to using the Kafka topic name as the table name unless `topic2TableMap` is provided. We keep hyphens in Kafka topics but underscores in ClickHouse table names, so the explicit map is required.
 - Prerequisites:
   - ClickHouse table exists: create via `sql/ddl/clickhouse_kafka_avro_events.sql`.
@@ -566,7 +567,15 @@ scripts/run_python_tool.sh query_clickhouse.py
 ### Credentials
 - HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`)
   - Update `.env`, then start ClickHouse (see Run). Changing credentials later requires recreating the container.
-  - Stock `default` user is removed; `configs/clickhouse/users.d/default-user.xml` creates `admin` from env vars. Add your own users as overrides in `configs/clickhouse/users.d/` if needed.
+  - Default user remains enabled for now (no enforcement yet).
+  - `configs/clickhouse/users.d/default-user.xml` creates `admin`, `writer`, and `readonly` users using env-sourced passwords.
+  - `CLICKHOUSE_USER` is expected to remain `admin` unless you also update the ClickHouse user config.
+  - Writer/readonly are not wired to services yet; Kafka Connect still uses the admin credentials from `.env`.
+  - To change admin credentials: update `CLICKHOUSE_PASSWORD` in `.env`, then recreate ClickHouse:
+```bash
+docker compose down
+docker compose up -d clickhouse-keeper clickhouse-1 clickhouse-2
+```
 ### Config overrides
 - Mounted as additional include paths (defaults remain intact):
   - `configs/clickhouse/config.d` → `/etc/clickhouse-server/config.d`
