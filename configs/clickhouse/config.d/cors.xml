@@ -1,0 +1,5 @@
+<clickhouse>
+  <http_options_response>
+    <add_http_cors_header>1</add_http_cors_header>
+  </http_options_response>
+</clickhouse>

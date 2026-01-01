@@ -303,7 +303,10 @@ services:
         condition: service_healthy
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:?Set CLICKHOUSE_USER in .env}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD in .env}
+      CLICKHOUSE_WRITER_PASSWORD: ${CLICKHOUSE_WRITER_PASSWORD:?Set CLICKHOUSE_WRITER_PASSWORD in .env}
+      CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD:?Set CLICKHOUSE_READER_PASSWORD in .env}
     ports:
       - "8123:8123"
       - "9000:9000"
@@ -319,7 +322,7 @@ services:
           --host 127.0.0.1
           --port 9000
           --user "$CLICKHOUSE_USER"
-          --password "$CLICKHOUSE_PASSWORD"
+          --password "$CLICKHOUSE_ADMIN_PASSWORD"
           --query "SELECT 1"
           --format Null
       interval: 10s
@@ -336,7 +339,10 @@ services:
         condition: service_healthy
     environment:
       CLICKHOUSE_USER: ${CLICKHOUSE_USER:?Set CLICKHOUSE_USER in .env}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD in .env}
+      CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD in .env}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD in .env}
+      CLICKHOUSE_WRITER_PASSWORD: ${CLICKHOUSE_WRITER_PASSWORD:?Set CLICKHOUSE_WRITER_PASSWORD in .env}
+      CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD:?Set CLICKHOUSE_READER_PASSWORD in .env}
     ports:
       - "8124:8123"
       - "9001:9000"
@@ -352,7 +358,7 @@ services:
           --host 127.0.0.1
           --port 9000
           --user "$CLICKHOUSE_USER"
-          --password "$CLICKHOUSE_PASSWORD"
+          --password "$CLICKHOUSE_ADMIN_PASSWORD"
           --query "SELECT 1"
           --format Null
       interval: 10s

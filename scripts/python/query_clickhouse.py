@@ -2,7 +2,7 @@
 """
 Minimal ClickHouse query helper for local dev using clickhouse-connect.
 
-Reads CLICKHOUSE_HTTP, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD,
+Reads CLICKHOUSE_HTTP, CLICKHOUSE_READER_USER, CLICKHOUSE_READER_PASSWORD,
 KAFKA_AVRO_EVENTS_TABLE, LIMIT and prints the result rows.
 """
 import os
@@ -13,8 +13,8 @@ import clickhouse_connect
 
 
 CLICKHOUSE_HTTP = os.getenv("CLICKHOUSE_HTTP")
-CLICKHOUSE_USER = os.getenv("CLICKHOUSE_USER")
-CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_PASSWORD")
+CLICKHOUSE_USER = os.getenv("CLICKHOUSE_READER_USER")
+CLICKHOUSE_PASSWORD = os.getenv("CLICKHOUSE_READER_PASSWORD")
 KAFKA_AVRO_EVENTS_TABLE = os.getenv("KAFKA_AVRO_EVENTS_TABLE")
 LIMIT_RAW = os.getenv("LIMIT")
 
@@ -40,8 +40,8 @@ def main() -> int:
         name
         for name, value in {
             "CLICKHOUSE_HTTP": CLICKHOUSE_HTTP,
-            "CLICKHOUSE_USER": CLICKHOUSE_USER,
-            "CLICKHOUSE_PASSWORD": CLICKHOUSE_PASSWORD,
+            "CLICKHOUSE_READER_USER": CLICKHOUSE_USER,
+            "CLICKHOUSE_READER_PASSWORD": CLICKHOUSE_PASSWORD,
             "KAFKA_AVRO_EVENTS_TABLE": KAFKA_AVRO_EVENTS_TABLE,
             "LIMIT": LIMIT_RAW,
         }.items()

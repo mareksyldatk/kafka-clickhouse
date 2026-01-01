@@ -94,7 +94,7 @@ No new features; just security compatibility of all examples/smoke tests/scripts
 ```text
 Add ClickHouse user/role config under configs/clickhouse/:
 - writer for Kafka Connect (minimal privileges via profiles)
-- readonly for humans
+- reader for humans
 - admin access to admin
 Keep default access open for now (no enforcement yet).
 Document credentials sourcing (env/secret files), not hardcoded values.
@@ -107,7 +107,7 @@ Document credentials sourcing (env/secret files), not hardcoded values.
 ### Commit 8 — Enforce ClickHouse authentication
 **Prompt**
 ```text
-Defer enforcement until services are wired to writer/readonly users.
+Defer enforcement until services are wired to writer/reader users.
 Document how to change admin credentials via .env and how to switch Kafka Connect later.
 ```
 **Why**
@@ -118,7 +118,7 @@ Document how to change admin credentials via .env and how to switch Kafka Connec
 **Prompt**
 ```text
 Add README checks showing:
-- readonly can SELECT but cannot INSERT/CREATE
+- reader can SELECT but cannot INSERT/CREATE
 - writer can INSERT into target tables but cannot DROP/ALTER outside scope
 No code changes beyond necessary grants/docs.
 ```

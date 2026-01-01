@@ -1,0 +1,48 @@
+<clickhouse>
+  <!-- Docs: <https://clickhouse.com/docs/operations/settings/settings_users/> -->
+  <profiles>
+    <writer>
+      <readonly>0</readonly>
+      <allow_ddl>0</allow_ddl>
+      <allow_introspection_functions>0</allow_introspection_functions>
+    </writer>
+    <reader>
+      <readonly>2</readonly>
+      <allow_ddl>0</allow_ddl>
+      <allow_introspection_functions>0</allow_introspection_functions>
+    </reader>
+  </profiles>
+  <users>
+    <!-- Remove default user to enforce auth. -->
+    <default remove="remove">
+    </default>
+
+    <admin>
+      <profile>default</profile>
+      <networks>
+        <ip>::/0</ip>
+      </networks>
+      <password from_env="CLICKHOUSE_ADMIN_PASSWORD"/>
+      <quota>default</quota>
+      <access_management>0</access_management>
+    </admin>
+
+    <writer>
+      <profile>writer</profile>
+      <networks>
+        <ip>::/0</ip>
+      </networks>
+      <password from_env="CLICKHOUSE_WRITER_PASSWORD"/>
+      <quota>default</quota>
+    </writer>
+
+    <reader>
+      <profile>reader</profile>
+      <networks>
+        <ip>::/0</ip>
+      </networks>
+      <password from_env="CLICKHOUSE_READER_PASSWORD"/>
+      <quota>default</quota>
+    </reader>
+  </users>
+</clickhouse>

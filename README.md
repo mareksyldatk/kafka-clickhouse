@@ -469,7 +469,7 @@ curl -s "${CONNECT_URL}/connector-plugins" | jq -r '.[].class'
 
 ### Example ClickHouse sink connector (single topic → single table, native plugin)
 - Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka-avro-events` to table `kafka_avro_events` via `topic2TableMap` for the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector; the default `hostname` targets `clickhouse-haproxy` for load-balanced access and uses port `8123` because containers talk on the internal network, not the host-mapped `18123`. SASL auth is handled by the Kafka Connect worker config in `docker-compose.yml`, so the connector JSON does not need extra Kafka auth settings.)
-- When ready to switch from admin: set `username=writer` and `password=${CLICKHOUSE_WRITER_PASSWORD}` in the connector JSON, then redeploy.
+- Kafka Connect uses the writer credentials by default; update `CLICKHOUSE_WRITER_PASSWORD` in `.env` if you change the password.
 - Note: the native ClickHouse sink defaults to using the Kafka topic name as the table name unless `topic2TableMap` is provided. We keep hyphens in Kafka topics but underscores in ClickHouse table names, so the explicit map is required.
 - Prerequisites:
   - ClickHouse table exists: create via `sql/ddl/clickhouse_kafka_avro_events.sql`.
@@ -483,11 +483,15 @@ docker compose up -d kafka-connect
 ```bash
 curl -s "${CONNECT_URL}/connector-plugins" | jq -r '.[].class' | rg ClickHouseSinkConnector
 ```
-- Deploy (edit credentials/topic/table in the JSON if you changed them):
+- Deploy (inject writer credentials from `.env`):
 ```bash
-curl -s -X PUT -H "Content-Type: application/json" \
-  --data @configs/connect/clickhouse-sink.json \
-  "${CONNECT_URL}/connectors/clickhouse-sink/config" | jq
+jq --arg user "${CLICKHOUSE_WRITER_USER}" \
+   --arg pass "${CLICKHOUSE_WRITER_PASSWORD}" \
+   '.username=$user | .password=$pass' \
+   configs/connect/clickhouse-sink.json | \
+  curl -s -X PUT -H "Content-Type: application/json" \
+    --data @- \
+    "${CONNECT_URL}/connectors/clickhouse-sink/config" | jq
 ```
 - Check status:
 ```bash
@@ -550,7 +554,7 @@ scripts/run_python_tool.sh kafka_json_consumer.py
 ```bash
 scripts/run_python_tool.sh query_clickhouse.py
 ```
-- To change the endpoint or query scope, update `CLICKHOUSE_HTTP`, `KAFKA_AVRO_EVENTS_TABLE`, and `LIMIT` in `.env` and re-run.
+- To change the endpoint or query scope, update `CLICKHOUSE_HTTP`, `KAFKA_AVRO_EVENTS_TABLE`, `LIMIT`, and the reader credentials in `.env` and re-run.
 
 ## ClickHouse
 - Role:
@@ -565,16 +569,26 @@ scripts/run_python_tool.sh query_clickhouse.py
     - ClickHouse Keeper: `localhost:9181`
   - Tip: point BI/HTTP clients (e.g., Metabase) at the HAProxy endpoint; it health-checks `/ping` and round-robins the two nodes.
 ### Credentials
-- HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`)
+- HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_ADMIN_PASSWORD`)
   - Update `.env`, then start ClickHouse (see Run). Changing credentials later requires recreating the container.
-  - Default user remains enabled for now (no enforcement yet).
-  - `configs/clickhouse/users.d/default-user.xml` creates `admin`, `writer`, and `readonly` users using env-sourced passwords.
-  - `CLICKHOUSE_USER` is expected to remain `admin` unless you also update the ClickHouse user config.
-  - Writer/readonly are not wired to services yet; Kafka Connect still uses the admin credentials from `.env`.
-  - To change admin credentials: update `CLICKHOUSE_PASSWORD` in `.env`, then recreate ClickHouse:
+  - Default user is removed to enforce auth.
+  - `configs/clickhouse/users.d/50-users-auth.xml` creates `admin`, `writer`, and `reader` users using env-sourced passwords; the `50-` prefix ensures it loads after ClickHouse's generated `default-user.xml`.
+  - The ClickHouse image expects `CLICKHOUSE_PASSWORD`; Docker Compose maps it to `CLICKHOUSE_ADMIN_PASSWORD` for clarity.
+  - Writer/reader restrictions are enforced via profiles (`readonly=2` for reader to allow safe settings changes; `allow_ddl=0` for writer/reader).
+- `CLICKHOUSE_USER` is expected to remain `admin` unless you also update the ClickHouse user config.
+- Kafka Connect is wired to the writer user; the JSON config is updated in the smoke test using `CLICKHOUSE_WRITER_USER`/`CLICKHOUSE_WRITER_PASSWORD`.
+  - To change admin credentials: update `CLICKHOUSE_ADMIN_PASSWORD` in `.env`, then recreate ClickHouse:
 ```bash
 docker compose down
 docker compose up -d clickhouse-keeper clickhouse-1 clickhouse-2
+```
+  - Verify auth is enforced (default removed) and admin access works:
+```bash
+# should fail without credentials
+curl -sS "${CLICKHOUSE_HTTP}/?query=SELECT+1"
+# should succeed with admin credentials
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SELECT+currentUser()"
 ```
 ### Config overrides
 - Mounted as additional include paths (defaults remain intact):
@@ -589,7 +603,8 @@ docker compose up -d clickhouse-keeper clickhouse-1 clickhouse-2
   - `keeper.xml` points both nodes at ClickHouse Keeper.
   - `cluster.xml` defines the `clickhouse_cluster` with two replicas.
   - `00-macros.xml` sets `shard`/`replica` macros per node.
-- Default admin user for local dev lives in `configs/clickhouse/users.d/default-user.xml` (matches `.env.example` credentials).
+  - `cors.xml` enables `add_http_cors_header` for HTTP UI queries.
+- Default admin user for local dev lives in `configs/clickhouse/users.d/50-users-auth.xml` (matches `.env.example` credentials).
 - To activate or add overrides: place a `.xml` file in the node-specific folders above (or shared users.d), then restart:
 ```bash
 docker compose restart clickhouse
@@ -624,41 +639,53 @@ docker compose logs -f clickhouse-2
 ### Smoke tests
 - Ping via HAProxy (returns `Ok.`):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" "${CLICKHOUSE_HTTP}/ping"
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" "${CLICKHOUSE_HTTP}/ping"
   ```
 - Ping a specific node if needed:
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" "${CLICKHOUSE_NODE1_HTTP}/ping"
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" "${CLICKHOUSE_NODE1_HTTP}/ping"
   ```
 - Healthcheck note: the container reports healthy after this succeeds (it may take a few seconds on first start):
 ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_HTTP}/?query=SELECT+1"\
 ```
 - Confirm effective user/profile (verifies overrides are applied):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_HTTP}/?query=SELECT+currentUser(),+currentProfiles()"
   ```
 - Verify replication and persistence:
   ```bash
   # create a test table ON CLUSTER and write one row (ReplicatedMergeTree)
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     -X POST -d '' "${CLICKHOUSE_HTTP}/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_test_replication+ON+CLUSTER+clickhouse_cluster(id+UInt32)+ENGINE=ReplicatedMergeTree(%27/clickhouse/{shard}/smoke_test_replication%27,%27{replica}%27)+ORDER+BY+id"
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     -X POST -d '' "${CLICKHOUSE_HTTP}/?query=INSERT+INTO+smoke_test_replication+VALUES(1)"
 
   # read from node 2 to confirm replication
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_NODE2_HTTP}/?query=SELECT+*+FROM+smoke_test_replication"
   ```
 - Kafka JSON store read (stable; queries persisted rows):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
   ```
 - Play UI (opens in browser; uses admin credentials in query params):
   [http://localhost:8123/play?user=admin&password=clickhouse](http://localhost:8123/play?user=admin&password=clickhouse) (update the URL if you change credentials)
+
+### Auth checks
+- Permission profiles:
+  - reader: `readonly=2`, `allow_ddl=0`, `allow_introspection_functions=0` (read-only, with settings-level readonly mode so UI per-query settings are allowed)
+  - writer: `readonly=0`, `allow_ddl=0`, `allow_introspection_functions=0` (can read/write data, but no DDL and no introspection)
+- Verify effective grants (use the passwords from `.env`):
+```bash
+curl -sS -u "${CLICKHOUSE_READER_USER}:${CLICKHOUSE_READER_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SHOW+GRANTS"
+curl -sS -u "${CLICKHOUSE_WRITER_USER}:${CLICKHOUSE_WRITER_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SHOW+GRANTS"
+```
 
 ### Example table for Kafka ingestion
 - DDLs:
@@ -670,19 +697,19 @@ docker compose logs -f clickhouse-2
 - When to create: after ClickHouse and ClickHouse Keeper are up and before wiring a Kafka Connect sink; run once per environment.
 - How to create on all replicas (preferred): run ON CLUSTER once from any node:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_internal_db.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_avro_events.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_table.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_mv.sql \
   "${CLICKHOUSE_HTTP}/?query="
 ```
@@ -721,35 +748,39 @@ EOF'
 ```
 - Apply the DDLs on the cluster (manual smoke test prerequisite):
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_avro_events.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_table.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_mv.sql \
   "${CLICKHOUSE_HTTP}/?query="
 ```
 - Wait for the table to exist on both nodes (avoid HAProxy routing to a node that has not applied the DDL yet):
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_AVRO_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_AVRO_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}"
 ```
-- Apply the connector config (idempotent):
+- Apply the connector config (idempotent; inject writer credentials from `.env`):
 ```bash
-curl -s -X PUT -H "Content-Type: application/json" \
-  --data @configs/connect/clickhouse-sink.json \
-  "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/config" | jq
+jq --arg user "${CLICKHOUSE_WRITER_USER}" \
+   --arg pass "${CLICKHOUSE_WRITER_PASSWORD}" \
+   '.username=$user | .password=$pass' \
+   configs/connect/clickhouse-sink.json | \
+  curl -s -X PUT -H "Content-Type: application/json" \
+    --data @- \
+    "${CONNECT_URL}/connectors/${CONNECTOR_NAME}/config" | jq
 ```
 - Confirm the connector is RUNNING:
 ```bash
@@ -812,14 +843,14 @@ printf '{"id":101,"source":"smoke-json","ts":"%s","payload":"hello-json"}\n' "${
 ```
 - Verify rows landed in ClickHouse:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_HTTP}/?query=SELECT+count(),+min(id),+max(id)+FROM+${KAFKA_AVRO_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_AVRO_EVENTS_TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
 ```
 - Verify the JSON store table via HAProxy:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}+ORDER+BY+ts+DESC+LIMIT+1"
 ```
 - If anything fails, check connector status/logs:
