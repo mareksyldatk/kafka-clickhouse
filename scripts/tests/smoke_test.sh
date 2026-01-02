@@ -21,6 +21,7 @@ cd "$ROOT_DIR"
 : "${KAFKA_JSON_EVENTS_TABLE_DDL:?Missing KAFKA_JSON_EVENTS_TABLE_DDL (run: source scripts/source_env.sh)}"
 : "${KAFKA_JSON_EVENTS_TOPIC:?Missing KAFKA_JSON_EVENTS_TOPIC (run: source scripts/source_env.sh)}"
 : "${KAFKA_JSON_EVENTS_SUBJECT:?Missing KAFKA_JSON_EVENTS_SUBJECT (run: source scripts/source_env.sh)}"
+: "${KAFKA_JSON_EVENTS_SCHEMA_FILE:?Missing KAFKA_JSON_EVENTS_SCHEMA_FILE (run: source scripts/source_env.sh)}"
 : "${KAFKA_JSON_EVENTS_STORE_TABLE:?Missing KAFKA_JSON_EVENTS_STORE_TABLE (run: source scripts/source_env.sh)}"
 : "${KAFKA_JSON_EVENTS_STORE_TABLE_DDL:?Missing KAFKA_JSON_EVENTS_STORE_TABLE_DDL (run: source scripts/source_env.sh)}"
 : "${KAFKA_JSON_EVENTS_STORE_MV_DDL:?Missing KAFKA_JSON_EVENTS_STORE_MV_DDL (run: source scripts/source_env.sh)}"
@@ -54,9 +55,13 @@ echo "0) Prepare Kafka client config inside kafka-broker-1"
 create_client_properties kafka-broker-1
 
 echo "1) Register JSON schema for ${KAFKA_JSON_EVENTS_TOPIC}"
+schema_payload="$(mktemp)"
+jq -n --argfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
+  '{schemaType:"JSON", schema: ($schema | tojson)}' > "${schema_payload}"
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
-  --data '{"schemaType":"JSON","schema":"{\"type\":\"object\",\"required\":[\"id\",\"source\",\"ts\",\"payload\"],\"properties\":{\"id\":{\"type\":\"integer\"},\"source\":{\"type\":\"string\"},\"ts\":{\"type\":\"string\"},\"payload\":{\"type\":\"string\"}},\"additionalProperties\":false}"}' \
+  --data @"${schema_payload}" \
   "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions" | jq .
+rm -f "${schema_payload}"
 
 echo "2) Apply ClickHouse DDLs (Kafka internal DB + JSON tables)"
 curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \

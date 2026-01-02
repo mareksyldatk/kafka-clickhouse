@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["id", "source", "ts", "payload"],
+  "properties": {
+    "id": { "type": "integer" },
+    "source": { "type": "string" },
+    "ts": { "type": "string" },
+    "payload": { "type": "string" }
+  },
+  "additionalProperties": false
+}

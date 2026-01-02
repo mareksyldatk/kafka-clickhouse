@@ -30,7 +30,7 @@ scripts/docker_up.sh
 - The repo commits `.env.example` only; `.env` itself is git-ignored for local overrides.
 - `.env.example` is grouped by purpose (cluster settings, auth, endpoints, event topics/tables, smoke tests); keep it in sync with your local changes.
 - Env quick map:
-  - Kafka events: `KAFKA_INTERNAL_DB`, `KAFKA_INTERNAL_DB_DDL`, `KAFKA_JSON_EVENTS_TOPIC`, `KAFKA_JSON_EVENTS_SUBJECT`, `KAFKA_JSON_EVENTS_TABLE`, `KAFKA_JSON_EVENTS_TABLE_DDL`, `KAFKA_JSON_EVENTS_STORE_TABLE`, `KAFKA_JSON_EVENTS_STORE_TABLE_DDL`, `KAFKA_JSON_EVENTS_STORE_MV_DDL`.
+  - Kafka events: `KAFKA_INTERNAL_DB`, `KAFKA_INTERNAL_DB_DDL`, `KAFKA_JSON_EVENTS_TOPIC`, `KAFKA_JSON_EVENTS_SUBJECT`, `KAFKA_JSON_EVENTS_SCHEMA_FILE`, `KAFKA_JSON_EVENTS_TABLE`, `KAFKA_JSON_EVENTS_TABLE_DDL`, `KAFKA_JSON_EVENTS_STORE_TABLE`, `KAFKA_JSON_EVENTS_STORE_TABLE_DDL`, `KAFKA_JSON_EVENTS_STORE_MV_DDL`.
   - Smoke tests: `KAFKA_SMOKE_TEST_TOPIC`, `GROUP_ID`, `MAX_MESSAGES`, `MESSAGE_ID`, `LIMIT`.
   - Endpoints: `SCHEMA_REGISTRY_URL`, `SCHEMA_REGISTRY_URL_INTERNAL`, `CLICKHOUSE_HTTP`, `CLICKHOUSE_NODE1_HTTP`, `CLICKHOUSE_NODE2_HTTP`, `BOOTSTRAP_SERVERS`, `BOOTSTRAP_SERVERS_INTERNAL`.
 - Before running any snippet that references `${...}`, run `source scripts/source_env.sh` in that shell.
@@ -284,9 +284,11 @@ docker compose logs -f schema-registry
 ### JSON schema for `kafka-json-events`
 - Register the JSON schema (creates/updates the subject):
 ```bash
-curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
-  --data '{"schemaType":"JSON","schema":"{\"type\":\"object\",\"required\":[\"id\",\"source\",\"ts\",\"payload\"],\"properties\":{\"id\":{\"type\":\"integer\"},\"source\":{\"type\":\"string\"},\"ts\":{\"type\":\"string\"},\"payload\":{\"type\":\"string\"}},\"additionalProperties\":false}"}' \
-  "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions"
+jq -n --argfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
+  '{schemaType:"JSON", schema: ($schema | tojson)}' | \
+  curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
+    --data @- \
+    "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions"
 ```
 - List subjects (should include `${KAFKA_JSON_EVENTS_SUBJECT}`):
 ```bash
@@ -513,9 +515,11 @@ EOF'
 ```
   - Register/update the JSON schema:
 ```bash
-curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
-  --data '{"schemaType":"JSON","schema":"{\"type\":\"object\",\"required\":[\"id\",\"source\",\"ts\",\"payload\"],\"properties\":{\"id\":{\"type\":\"integer\"},\"source\":{\"type\":\"string\"},\"ts\":{\"type\":\"string\"},\"payload\":{\"type\":\"string\"}},\"additionalProperties\":false}"}' \
-  "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions"
+jq -n --argfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
+  '{schemaType:"JSON", schema: ($schema | tojson)}' | \
+  curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
+    --data @- \
+    "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions"
 ```
   - Create the JSON topic:
 ```bash
