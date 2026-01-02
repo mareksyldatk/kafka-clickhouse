@@ -56,8 +56,8 @@ create_client_properties kafka-broker-1
 
 echo "1) Register JSON schema for ${KAFKA_JSON_EVENTS_TOPIC}"
 schema_payload="$(mktemp)"
-jq -n --argfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
-  '{schemaType:"JSON", schema: ($schema | tojson)}' > "${schema_payload}"
+jq -n --slurpfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
+  '{schemaType:"JSON", schema: ($schema[0] | tojson)}' > "${schema_payload}"
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
   --data @"${schema_payload}" \
   "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions" | jq .

@@ -284,8 +284,8 @@ docker compose logs -f schema-registry
 ### JSON schema for `kafka-json-events`
 - Register the JSON schema (creates/updates the subject):
 ```bash
-jq -n --argfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
-  '{schemaType:"JSON", schema: ($schema | tojson)}' | \
+jq -n --slurpfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
+  '{schemaType:"JSON", schema: ($schema[0] | tojson)}' | \
   curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
     --data @- \
     "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions"
@@ -515,8 +515,8 @@ EOF'
 ```
   - Register/update the JSON schema:
 ```bash
-jq -n --argfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
-  '{schemaType:"JSON", schema: ($schema | tojson)}' | \
+jq -n --slurpfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
+  '{schemaType:"JSON", schema: ($schema[0] | tojson)}' | \
   curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
     --data @- \
     "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions"
