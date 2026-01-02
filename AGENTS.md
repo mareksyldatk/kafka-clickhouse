@@ -17,7 +17,7 @@
 - YAML: 2-space indent, explicit keys, avoid inline env definitions when secrets are involved.
 - Shell scripts: `bash -euo pipefail`, lower_snake_case filenames, keep scripts idempotent for reruns.
 - Config files: prefer mounted files under `configs/` over in-line Compose snippets; name by service (`configs/kafka/…`, `configs/clickhouse/…`).
-- Env vars: use explicit, purpose-scoped names (e.g., `KAFKA_AVRO_EVENTS_*`, `KAFKA_JSON_EVENTS_*`, `KAFKA_INTERNAL_DB`); keep `.env` and `.env.example` in sync and grouped by purpose.
+- Env vars: use explicit, purpose-scoped names (e.g., `KAFKA_JSON_EVENTS_*`, `KAFKA_INTERNAL_DB`); keep `.env` and `.env.example` in sync and grouped by purpose.
 
 ## Testing Guidelines
 - Infra tests are manual for now: use documented smoke tests (e.g., Kafka topic create/produce/consume once those services exist).

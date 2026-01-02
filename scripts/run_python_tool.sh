@@ -16,7 +16,7 @@ fi
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <tool> [args...]" >&2
-  echo "Example: $0 kafka_avro_producer.py" >&2
+  echo "Example: $0 kafka_json_producer.py" >&2
   exit 1
 fi
 

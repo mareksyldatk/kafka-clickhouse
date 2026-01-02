@@ -9,7 +9,7 @@ if [[ ! -f .env ]]; then
 fi
 
 if [[ ! -f secrets/local.env ]]; then
-  echo "Missing secrets/local.env. Copy secrets/templates/local.env to secrets/local.env and fill in values." >&2
+  echo "Missing secrets/local.env. Copy templates/secrets/local.env to secrets/local.env and fill in values." >&2
   return 1
 fi
 

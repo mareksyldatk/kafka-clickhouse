@@ -4,8 +4,8 @@ This repository contains a **step-by-step, Docker Compose–based local data pip
 
 The end goal is a **Kafka → ClickHouse** pipeline with:
 
-* explicit ingestion (Kafka Connect),
-* schema discipline (Schema Registry),
+* JSON schemas via Schema Registry,
+* explicit ingestion (Kafka engine tables),
 * persistence and restart safety,
 * and later: authentication and least-privilege access.
 
@@ -19,7 +19,7 @@ The stack is intentionally built **in small, reviewable steps** to avoid hidden 
 
 * Local development only (Docker Compose)
 * Local Kubernetes migration (kind) in Step III
-* Kafka, Schema Registry, Kafka Connect
+* Kafka, Schema Registry
 * ClickHouse as analytical sink
 * Explicit configuration and persistence
 * Reproducible startup and smoke tests
@@ -40,7 +40,7 @@ The stack is intentionally built **in small, reviewable steps** to avoid hidden 
 ├── docker-compose.yml     # Incrementally built Compose file
 ├── .env.example           # Non-sensitive defaults only
 ├── README.md              # This document
-├── configs/               # Mounted service configs (Kafka, Connect, ClickHouse)
+├── configs/               # Mounted service configs (ClickHouse)
 ├── sql/                   # ClickHouse schemas and setup scripts
 └── scripts/               # Helper scripts (optional, documented)
 ```

@@ -8,7 +8,7 @@ Short, quick-lookup reference for common engines and replication patterns used i
 - Use when you do not need replication.
 - Fast OLAP storage with primary key-like sorting via `ORDER BY`.
 ```sql
-CREATE TABLE IF NOT EXISTS kafka_avro_events (
+CREATE TABLE IF NOT EXISTS kafka_json_events_store (
     id UInt64,
     source String,
     ts DateTime64(3, 'UTC'),
@@ -19,33 +19,33 @@ ORDER BY (ts, id);
 ```
 Usage example:
 ```sql
-INSERT INTO kafka_avro_events VALUES (1, 'app', now64(3, 'UTC'), '{"k":"v"}');
-SELECT count(*) FROM kafka_avro_events WHERE ts >= now() - INTERVAL 1 HOUR;
+INSERT INTO kafka_json_events_store VALUES (1, 'app', now64(3, 'UTC'), '{"k":"v"}');
+SELECT count(*) FROM kafka_json_events_store WHERE ts >= now() - INTERVAL 1 HOUR;
 ```
 
 ### ReplicatedMergeTree (replicated storage)
 - Use for HA; requires ClickHouse Keeper or ZooKeeper.
 - Same behavior as MergeTree, but replicated by shard/replica path (why: each shard's data is duplicated across replicas for failover).
 ```sql
-CREATE TABLE IF NOT EXISTS kafka_avro_events ON CLUSTER clickhouse_cluster (
+CREATE TABLE IF NOT EXISTS kafka_json_events_store ON CLUSTER clickhouse_cluster (
     id UInt64,
     source String,
     ts DateTime64(3, 'UTC'),
     payload String
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/{shard}/kafka_avro_events', '{replica}')
+ENGINE = ReplicatedMergeTree('/clickhouse/{shard}/kafka_json_events_store', '{replica}')
 ORDER BY (ts, id);
 ```
 Usage example (same SQL as MergeTree; replication is transparent):
 ```sql
-SELECT min(ts), max(ts), count(*) FROM kafka_avro_events;
+SELECT min(ts), max(ts), count(*) FROM kafka_json_events_store;
 ```
 
 ### ReplacingMergeTree (dedupe by version)
 - Use when late updates arrive and you want the last version to win.
 - Provide a `version` column; final row chosen during merges.
 ```sql
-CREATE TABLE IF NOT EXISTS kafka_avro_events (
+CREATE TABLE IF NOT EXISTS kafka_json_events_store (
     id UInt64,
     source String,
     ts DateTime64(3, 'UTC'),
@@ -57,7 +57,7 @@ ORDER BY (id, ts);
 ```
 Usage example:
 ```sql
-SELECT * FROM kafka_avro_events FINAL WHERE id = 42;
+SELECT * FROM kafka_json_events_store FINAL WHERE id = 42;
 ```
 
 ### SummingMergeTree (rollups)
@@ -91,7 +91,7 @@ ORDER BY (source, day);
 Usage example:
 ```sql
 INSERT INTO event_metrics
-SELECT source, toDate(ts), uniqState(id) FROM kafka_avro_events GROUP BY source, toDate(ts);
+SELECT source, toDate(ts), uniqState(id) FROM kafka_json_events_store GROUP BY source, toDate(ts);
 SELECT source, day, uniqMerge(uniq_users) FROM event_metrics GROUP BY source, day;
 ```
 
@@ -136,12 +136,12 @@ SELECT * FROM kafka_internal.kafka_json_events;
 ### Distributed (query router)
 - Use for querying across all shards via one logical table (why: it fans out queries to shard-local tables and merges results).
 ```sql
-CREATE TABLE IF NOT EXISTS kafka_avro_events_all AS kafka_avro_events
-ENGINE = Distributed(clickhouse_cluster, default, kafka_avro_events, rand());
+CREATE TABLE IF NOT EXISTS kafka_json_events_store_all AS kafka_json_events_store
+ENGINE = Distributed(clickhouse_cluster, default, kafka_json_events_store, rand());
 ```
 Usage example:
 ```sql
-SELECT count(*) FROM kafka_avro_events_all;
+SELECT count(*) FROM kafka_json_events_store_all;
 ```
 
 ## Replication (quick lookup)
@@ -150,30 +150,30 @@ SELECT count(*) FROM kafka_avro_events_all;
 - Create the local table on every node with `ON CLUSTER`.
 - Use `{shard}` and `{replica}` placeholders in the path.
 ```sql
-CREATE TABLE IF NOT EXISTS kafka_avro_events ON CLUSTER clickhouse_cluster (
+CREATE TABLE IF NOT EXISTS kafka_json_events_store ON CLUSTER clickhouse_cluster (
     id UInt64,
     source String,
     ts DateTime64(3, 'UTC'),
     payload String
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/{shard}/kafka_avro_events', '{replica}')
+ENGINE = ReplicatedMergeTree('/clickhouse/{shard}/kafka_json_events_store', '{replica}')
 ORDER BY (ts, id);
 ```
 Usage example:
 ```sql
-SELECT hostName(), count(*) FROM kafka_avro_events GROUP BY hostName();
+SELECT hostName(), count(*) FROM kafka_json_events_store GROUP BY hostName();
 ```
 
 ### Replicated + Distributed pair (recommended pattern)
 - Local `ReplicatedMergeTree` table holds data per node.
 - `Distributed` table provides cluster-wide query access.
 ```sql
-CREATE TABLE IF NOT EXISTS kafka_avro_events_all AS kafka_avro_events
-ENGINE = Distributed(clickhouse_cluster, default, kafka_avro_events, rand());
+CREATE TABLE IF NOT EXISTS kafka_json_events_store_all AS kafka_json_events_store
+ENGINE = Distributed(clickhouse_cluster, default, kafka_json_events_store, rand());
 ```
 Usage example:
 ```sql
-SELECT count(*) FROM kafka_avro_events_all;
+SELECT count(*) FROM kafka_json_events_store_all;
 ```
 
 ## References
