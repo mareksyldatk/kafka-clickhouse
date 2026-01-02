@@ -42,3 +42,7 @@
 - Always explain why certain solution was chosen.
 - Update `README.md` accordingly.
 - Validate and remove unnecessary code and documentation without altering the functionality.
+
+## Industry standards
+- Stick to recommended approaches and industry standards.
+- Always use good practices in terms of programming and system design.
