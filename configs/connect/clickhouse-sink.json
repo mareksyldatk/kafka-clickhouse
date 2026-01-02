@@ -5,7 +5,7 @@
   "hostname": "clickhouse-haproxy",
   "port": "8123",
   "username": "writer",
-  "password": "clickhouse_writer",
+  "password": "CHANGE_ME",
   "database": "default",
   "topic2TableMap": "kafka-avro-events=kafka_avro_events",
   "insert_mode": "INSERT",

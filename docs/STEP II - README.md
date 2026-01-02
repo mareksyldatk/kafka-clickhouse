@@ -67,7 +67,7 @@ Add a README smoke test (list subjects) proving Registry works under SASL.
 Configure Connect worker to use SASL/PLAIN to Kafka.
 Ensure internal topics remain usable.
 Adjust (or add new) README smoke test for Connect REST + internal topics under SASL.
-Same with smoke_test.sh.
+Same with `scripts/tests/smoke_test.sh`.
 Do not redeploy sink connector yet.
 ```
 **Why**

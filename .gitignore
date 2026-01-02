@@ -3,6 +3,11 @@
 .env.local
 .env.*.local
 
+# Local secrets (templates are tracked)
+secrets/*
+!secrets/templates/
+!secrets/templates/**
+
 # OS/editor cruft
 .DS_Store
 .idea/
@@ -13,6 +18,9 @@ __pycache__/
 
 # Local data mounts
 data/
+
+# ClickHouse entrypoint-generated user file (local only)
+configs/clickhouse/users.d/default-user.xml
 
 # Ensure contributor guide is tracked even if globally ignored
 !AGENTS.md

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+source scripts/source_env.sh
+
 usage() {
   cat <<'USAGE'
 Usage: scripts/docker_up.sh [--recreate]

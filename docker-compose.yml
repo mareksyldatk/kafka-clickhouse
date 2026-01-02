@@ -31,7 +31,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_1:/var/lib/kafka/data
-      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
+      - ./secrets/kafka:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -57,7 +57,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_2:/var/lib/kafka/data
-      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
+      - ./secrets/kafka:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -83,7 +83,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_controller_3:/var/lib/kafka/data
-      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
+      - ./secrets/kafka:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -124,7 +124,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_1:/var/lib/kafka/data
-      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
+      - ./secrets/kafka:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -165,7 +165,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_2:/var/lib/kafka/data
-      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
+      - ./secrets/kafka:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -206,7 +206,7 @@ services:
       KAFKA_LOG4J_ROOT_LOGLEVEL: WARN
     volumes:
       - kafka_broker_3:/var/lib/kafka/data
-      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
+      - ./secrets/kafka:/etc/kafka/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -239,7 +239,7 @@ services:
       retries: 12
       start_period: 30s
     volumes:
-      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
+      - ./secrets/kafka:/etc/kafka/secrets:ro
 
   kafka-connect:
     build:
@@ -292,7 +292,7 @@ services:
       retries: 12
       start_period: 120s
     volumes:
-      - ./configs/kafka/secrets:/etc/kafka/secrets:ro
+      - ./secrets/kafka:/etc/kafka/secrets:ro
 
   clickhouse-1:
     image: clickhouse/clickhouse-server:25.11
@@ -302,9 +302,8 @@ services:
       clickhouse-keeper:
         condition: service_healthy
     environment:
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?Set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_ADMIN_USER:?Set CLICKHOUSE_ADMIN_USER in .env}
       CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD in .env}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD in .env}
       CLICKHOUSE_WRITER_PASSWORD: ${CLICKHOUSE_WRITER_PASSWORD:?Set CLICKHOUSE_WRITER_PASSWORD in .env}
       CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD:?Set CLICKHOUSE_READER_PASSWORD in .env}
     ports:
@@ -314,6 +313,7 @@ services:
       - clickhouse_data_1:/var/lib/clickhouse
       - ./configs/clickhouse/node1/config.d:/etc/clickhouse-server/config.d
       - ./configs/clickhouse/users.d:/etc/clickhouse-server/users.d
+      - ./secrets/clickhouse:/etc/clickhouse-server/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -321,7 +321,7 @@ services:
           clickhouse-client
           --host 127.0.0.1
           --port 9000
-          --user "$CLICKHOUSE_USER"
+          --user "$CLICKHOUSE_ADMIN_USER"
           --password "$CLICKHOUSE_ADMIN_PASSWORD"
           --query "SELECT 1"
           --format Null
@@ -338,9 +338,8 @@ services:
       clickhouse-keeper:
         condition: service_healthy
     environment:
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:?Set CLICKHOUSE_USER in .env}
+      CLICKHOUSE_ADMIN_USER: ${CLICKHOUSE_ADMIN_USER:?Set CLICKHOUSE_ADMIN_USER in .env}
       CLICKHOUSE_ADMIN_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD in .env}
-      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD in .env}
       CLICKHOUSE_WRITER_PASSWORD: ${CLICKHOUSE_WRITER_PASSWORD:?Set CLICKHOUSE_WRITER_PASSWORD in .env}
       CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD:?Set CLICKHOUSE_READER_PASSWORD in .env}
     ports:
@@ -350,6 +349,7 @@ services:
       - clickhouse_data_2:/var/lib/clickhouse
       - ./configs/clickhouse/node2/config.d:/etc/clickhouse-server/config.d
       - ./configs/clickhouse/users.d:/etc/clickhouse-server/users.d
+      - ./secrets/clickhouse:/etc/clickhouse-server/secrets:ro
     healthcheck:
       test:
         - CMD-SHELL
@@ -357,7 +357,7 @@ services:
           clickhouse-client
           --host 127.0.0.1
           --port 9000
-          --user "$CLICKHOUSE_USER"
+          --user "$CLICKHOUSE_ADMIN_USER"
           --password "$CLICKHOUSE_ADMIN_PASSWORD"
           --query "SELECT 1"
           --format Null

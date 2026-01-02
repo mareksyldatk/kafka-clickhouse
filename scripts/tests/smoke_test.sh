@@ -9,36 +9,36 @@ set -euo pipefail
 # - Connector config exists at configs/connect/clickhouse-sink.json and uses Avro converters.
 # - clickhouse_kafka_avro_events.sql matches the payload schema below.
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-: "${CLICKHOUSE_USER:?Missing CLICKHOUSE_USER in .env}"
-: "${CLICKHOUSE_ADMIN_PASSWORD:?Missing CLICKHOUSE_ADMIN_PASSWORD in .env}"
-: "${KAFKA_CLIENT_SASL_USERNAME:?Missing KAFKA_CLIENT_SASL_USERNAME in .env}"
-: "${KAFKA_CLIENT_SASL_PASSWORD:?Missing KAFKA_CLIENT_SASL_PASSWORD in .env}"
-: "${CLICKHOUSE_WRITER_USER:?Missing CLICKHOUSE_WRITER_USER in .env}"
-: "${CLICKHOUSE_WRITER_PASSWORD:?Missing CLICKHOUSE_WRITER_PASSWORD in .env}"
-: "${CONNECTOR_CONFIG:?Missing CONNECTOR_CONFIG in .env}"
-: "${CONNECTOR_NAME:?Missing CONNECTOR_NAME in .env}"
-: "${KAFKA_AVRO_EVENTS_TABLE_DDL:?Missing KAFKA_AVRO_EVENTS_TABLE_DDL in .env}"
-: "${KAFKA_AVRO_EVENTS_TOPIC:?Missing KAFKA_AVRO_EVENTS_TOPIC in .env}"
-: "${KAFKA_AVRO_EVENTS_TABLE:?Missing KAFKA_AVRO_EVENTS_TABLE in .env}"
-: "${KAFKA_AVRO_EVENTS_SUBJECT:?Missing KAFKA_AVRO_EVENTS_SUBJECT in .env}"
-: "${KAFKA_INTERNAL_DB:?Missing KAFKA_INTERNAL_DB in .env}"
-: "${KAFKA_INTERNAL_DB_DDL:?Missing KAFKA_INTERNAL_DB_DDL in .env}"
-: "${KAFKA_JSON_EVENTS_TABLE:?Missing KAFKA_JSON_EVENTS_TABLE in .env}"
-: "${KAFKA_JSON_EVENTS_TABLE_DDL:?Missing KAFKA_JSON_EVENTS_TABLE_DDL in .env}"
-: "${KAFKA_JSON_EVENTS_TOPIC:?Missing KAFKA_JSON_EVENTS_TOPIC in .env}"
-: "${KAFKA_JSON_EVENTS_STORE_TABLE:?Missing KAFKA_JSON_EVENTS_STORE_TABLE in .env}"
-: "${KAFKA_JSON_EVENTS_STORE_TABLE_DDL:?Missing KAFKA_JSON_EVENTS_STORE_TABLE_DDL in .env}"
-: "${KAFKA_JSON_EVENTS_STORE_MV_DDL:?Missing KAFKA_JSON_EVENTS_STORE_MV_DDL in .env}"
-: "${SCHEMA_REGISTRY_URL:?Missing SCHEMA_REGISTRY_URL in .env}"
-: "${SCHEMA_REGISTRY_URL_INTERNAL:?Missing SCHEMA_REGISTRY_URL_INTERNAL in .env}"
-: "${CONNECT_URL:?Missing CONNECT_URL in .env}"
-: "${CLICKHOUSE_HTTP:?Missing CLICKHOUSE_HTTP in .env}"
-: "${CLICKHOUSE_NODE1_HTTP:?Missing CLICKHOUSE_NODE1_HTTP in .env}"
-: "${CLICKHOUSE_NODE2_HTTP:?Missing CLICKHOUSE_NODE2_HTTP in .env}"
-: "${BOOTSTRAP_SERVERS_INTERNAL:?Missing BOOTSTRAP_SERVERS_INTERNAL in .env}"
+: "${CLICKHOUSE_ADMIN_USER:?Missing CLICKHOUSE_ADMIN_USER (run: source scripts/source_env.sh)}"
+: "${CLICKHOUSE_ADMIN_PASSWORD:?Missing CLICKHOUSE_ADMIN_PASSWORD (run: source scripts/source_env.sh)}"
+: "${KAFKA_CLIENT_SASL_USERNAME:?Missing KAFKA_CLIENT_SASL_USERNAME (run: source scripts/source_env.sh)}"
+: "${KAFKA_CLIENT_SASL_PASSWORD:?Missing KAFKA_CLIENT_SASL_PASSWORD (run: source scripts/source_env.sh)}"
+: "${CLICKHOUSE_WRITER_USER:?Missing CLICKHOUSE_WRITER_USER (run: source scripts/source_env.sh)}"
+: "${CLICKHOUSE_WRITER_PASSWORD:?Missing CLICKHOUSE_WRITER_PASSWORD (run: source scripts/source_env.sh)}"
+: "${CONNECTOR_CONFIG:?Missing CONNECTOR_CONFIG (run: source scripts/source_env.sh)}"
+: "${CONNECTOR_NAME:?Missing CONNECTOR_NAME (run: source scripts/source_env.sh)}"
+: "${KAFKA_AVRO_EVENTS_TABLE_DDL:?Missing KAFKA_AVRO_EVENTS_TABLE_DDL (run: source scripts/source_env.sh)}"
+: "${KAFKA_AVRO_EVENTS_TOPIC:?Missing KAFKA_AVRO_EVENTS_TOPIC (run: source scripts/source_env.sh)}"
+: "${KAFKA_AVRO_EVENTS_TABLE:?Missing KAFKA_AVRO_EVENTS_TABLE (run: source scripts/source_env.sh)}"
+: "${KAFKA_AVRO_EVENTS_SUBJECT:?Missing KAFKA_AVRO_EVENTS_SUBJECT (run: source scripts/source_env.sh)}"
+: "${KAFKA_INTERNAL_DB:?Missing KAFKA_INTERNAL_DB (run: source scripts/source_env.sh)}"
+: "${KAFKA_INTERNAL_DB_DDL:?Missing KAFKA_INTERNAL_DB_DDL (run: source scripts/source_env.sh)}"
+: "${KAFKA_JSON_EVENTS_TABLE:?Missing KAFKA_JSON_EVENTS_TABLE (run: source scripts/source_env.sh)}"
+: "${KAFKA_JSON_EVENTS_TABLE_DDL:?Missing KAFKA_JSON_EVENTS_TABLE_DDL (run: source scripts/source_env.sh)}"
+: "${KAFKA_JSON_EVENTS_TOPIC:?Missing KAFKA_JSON_EVENTS_TOPIC (run: source scripts/source_env.sh)}"
+: "${KAFKA_JSON_EVENTS_STORE_TABLE:?Missing KAFKA_JSON_EVENTS_STORE_TABLE (run: source scripts/source_env.sh)}"
+: "${KAFKA_JSON_EVENTS_STORE_TABLE_DDL:?Missing KAFKA_JSON_EVENTS_STORE_TABLE_DDL (run: source scripts/source_env.sh)}"
+: "${KAFKA_JSON_EVENTS_STORE_MV_DDL:?Missing KAFKA_JSON_EVENTS_STORE_MV_DDL (run: source scripts/source_env.sh)}"
+: "${SCHEMA_REGISTRY_URL:?Missing SCHEMA_REGISTRY_URL (run: source scripts/source_env.sh)}"
+: "${SCHEMA_REGISTRY_URL_INTERNAL:?Missing SCHEMA_REGISTRY_URL_INTERNAL (run: source scripts/source_env.sh)}"
+: "${CONNECT_URL:?Missing CONNECT_URL (run: source scripts/source_env.sh)}"
+: "${CLICKHOUSE_HTTP:?Missing CLICKHOUSE_HTTP (run: source scripts/source_env.sh)}"
+: "${CLICKHOUSE_NODE1_HTTP:?Missing CLICKHOUSE_NODE1_HTTP (run: source scripts/source_env.sh)}"
+: "${CLICKHOUSE_NODE2_HTTP:?Missing CLICKHOUSE_NODE2_HTTP (run: source scripts/source_env.sh)}"
+: "${BOOTSTRAP_SERVERS_INTERNAL:?Missing BOOTSTRAP_SERVERS_INTERNAL (run: source scripts/source_env.sh)}"
 AVRO_SCHEMA='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}'
 
 require() {
@@ -78,28 +78,28 @@ create_client_properties schema-registry
 create_quiet_log4j schema-registry
 
 echo "1) Apply ClickHouse DDLs (Kafka internal DB + tables)"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @"${KAFKA_INTERNAL_DB_DDL}" \
   "${CLICKHOUSE_HTTP}/?query=" >/dev/null
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @"${KAFKA_AVRO_EVENTS_TABLE_DDL}" \
   "${CLICKHOUSE_HTTP}/?query=" >/dev/null
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @"${KAFKA_JSON_EVENTS_TABLE_DDL}" \
   "${CLICKHOUSE_HTTP}/?query=" >/dev/null
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @"${KAFKA_JSON_EVENTS_STORE_TABLE_DDL}" \
   "${CLICKHOUSE_HTTP}/?query=" >/dev/null
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @"${KAFKA_JSON_EVENTS_STORE_MV_DDL}" \
   "${CLICKHOUSE_HTTP}/?query=" >/dev/null
 
 echo "1a) Confirm Avro table exists on both nodes"
 table_exists=false
 for _ in {1..12}; do
-  node1="$(curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  node1="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_AVRO_EVENTS_TABLE}")"
-  node2="$(curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  node2="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_AVRO_EVENTS_TABLE}")"
   if [[ "${node1}" == "1" && "${node2}" == "1" ]]; then
     table_exists=true
@@ -115,9 +115,9 @@ fi
 echo "1b) Confirm JSON Kafka engine table exists on both nodes"
 json_table_exists=false
 for _ in {1..12}; do
-  node1="$(curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  node1="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}")"
-  node2="$(curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  node2="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}")"
   if [[ "${node1}" == "1" && "${node2}" == "1" ]]; then
     json_table_exists=true
@@ -133,9 +133,9 @@ fi
 echo "1c) Confirm JSON store table exists on both nodes"
 json_store_exists=false
 for _ in {1..12}; do
-  node1="$(curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  node1="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_JSON_EVENTS_STORE_TABLE}")"
-  node2="$(curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  node2="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_JSON_EVENTS_STORE_TABLE}")"
   if [[ "${node1}" == "1" && "${node2}" == "1" ]]; then
     json_store_exists=true
@@ -204,16 +204,23 @@ for id in 1 2 3 4 5; do
   payload="${payloads[$((id - 1))]}"
   printf '{"id":%s,"source":"smoke","ts":"%s","payload":"%s"}\n' "${id}" "${ts}" "${payload}"
   sleep 1
-done | docker compose exec -T \
+done | tee /dev/stderr | docker compose exec -T \
   schema-registry kafka-avro-console-producer \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --topic "${KAFKA_AVRO_EVENTS_TOPIC}" \
   --property schema.registry.url="${SCHEMA_REGISTRY_URL_INTERNAL}" \
   --property value.schema='{"type":"record","name":"KafkaEvent","namespace":"example","fields":[{"name":"id","type":"long"},{"name":"source","type":"string"},{"name":"ts","type":"string"},{"name":"payload","type":"string"}]}' \
   --producer.config /tmp/client.properties \
-  --producer-property enable.metrics.push=false
+  --producer-property enable.metrics.push=false \
+  >/dev/null
 
-echo "6) Produce JSON sample message"
+echo "6) Verify Avro data landed in ClickHouse (${KAFKA_AVRO_EVENTS_TABLE})"
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SELECT+count(),+min(id),+max(id)+FROM+${KAFKA_AVRO_EVENTS_TABLE}"
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_AVRO_EVENTS_TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
+
+echo "7) Produce JSON sample message"
 json_ts="$(date -u +"%Y-%m-%d %H:%M:%S")"
 printf '{"id":%s,"source":"smoke-json","ts":"%s","payload":"hello-json"}\n' \
   "101" "${json_ts}" | docker compose exec -T \
@@ -222,7 +229,7 @@ printf '{"id":%s,"source":"smoke-json","ts":"%s","payload":"hello-json"}\n' \
   --topic "${KAFKA_JSON_EVENTS_TOPIC}" \
   --producer.config /tmp/client.properties
 
-echo "7) Consume one JSON message from ${KAFKA_JSON_EVENTS_TOPIC}"
+echo "8) Consume one JSON message from ${KAFKA_JSON_EVENTS_TOPIC}"
 docker compose exec -T \
   kafka-broker-1 kafka-console-consumer \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
@@ -231,12 +238,6 @@ docker compose exec -T \
   --from-beginning \
   --max-messages 1
 
-echo "8) Verify Avro data landed in ClickHouse (${KAFKA_AVRO_EVENTS_TABLE})"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  "${CLICKHOUSE_HTTP}/?query=SELECT+count(),+min(id),+max(id)+FROM+${KAFKA_AVRO_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_AVRO_EVENTS_TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
-
 echo "9) Verify JSON store table via HAProxy (${KAFKA_JSON_EVENTS_STORE_TABLE})"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}+ORDER+BY+ts+DESC+LIMIT+1"

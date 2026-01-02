@@ -9,7 +9,7 @@ This repository starts as a minimal scaffold for an incremental Docker Compose�
 - End-to-end Kafka → Connect → ClickHouse flow is validated via repeatable Avro smoke tests.
 - Startup is health-ordered; bring the stack up with:
 ```bash
-docker compose up -d
+scripts/docker_up.sh
 ```
 
 ## Repository layout
@@ -22,11 +22,12 @@ docker compose up -d
 
 ## How to use this scaffold
 1) Copy `.env.example` to `.env` and set required values (e.g., `CLUSTER_ID`).
-2) Add one service or configuration change per commit to keep changes reviewable.
-3) Document any new commands or smoke tests in `README.md` as the stack evolves.
+2) Copy secrets templates into an ignored `secrets/` folder and fill in local passwords.
+3) Add one service or configuration change per commit to keep changes reviewable.
+4) Document any new commands or smoke tests in `README.md` as the stack evolves.
 
 ## Environment file
-- Docker Compose automatically loads `.env` at the repo root; use it to keep container names and host ports predictable across restarts.
+- Docker Compose automatically loads `.env` at the repo root; use it for non-secret defaults (names, ports, topics, table names).
 - The repo commits `.env.example` only; `.env` itself is git-ignored for local overrides.
 - `.env.example` is grouped by purpose (cluster settings, auth, endpoints, connector defaults, event topics/tables, smoke tests); keep it in sync with your local changes.
 - Env quick map:
@@ -38,9 +39,19 @@ docker compose up -d
 ```bash
 docker run --rm confluentinc/cp-kafka:7.7.7 kafka-storage.sh random-uuid
 ```
-- Keep secrets out of `.env` and this repo; inject them at runtime via your shell, a locally stored untracked file, or a secrets manager.
+- Keep secrets out of `.env` and this repo; store them in `secrets/local.env` or inject via your shell/secret manager.
+
+## Secrets (local only)
+- Templates live under `secrets/templates/`. Run the setup script to create local copies:
+```bash
+scripts/setup/initial_setup.sh
+```
+- `secrets/local.env` holds passwords for ClickHouse and Kafka SASL.
+- `secrets/kafka/` holds the JAAS files mounted into Kafka, Schema Registry, and Kafka Connect.
+- `secrets/clickhouse/` is mounted into ClickHouse for optional TLS/cert files.
+- Portability note: `secrets/local.env` uses flat `KEY=VALUE` pairs so it can be reused as a CI env file or mapped directly into Kubernetes `envFrom`/Secret keys later.
 ## Local environment
-- Load `.env` into your current shell:
+- Load `.env` + `secrets/local.env` into your current shell:
 ```bash
 source scripts/source_env.sh
 ```
@@ -77,7 +88,7 @@ docker compose logs -f clickhouse-2
 ```
 - Setup Python virtualenv + deps (pyenv):
 ```bash
-scripts/setup_python.sh
+scripts/setup/setup_python.sh
 ```
 
 ## Logs & debugging
@@ -143,8 +154,8 @@ Controllers:  kafka-controller-1/2/3 (quorum on :9094)
 
 #### SASL/PLAIN placeholders (internal + host listeners enabled)
 - Broker internal and host listeners use SASL_PLAINTEXT and read `/etc/kafka/secrets/broker_jaas.conf`.
-- Client-side placeholders live in `configs/kafka/secrets/` (`client_jaas.conf`, `client.properties`) for later updates.
-- Keep real credentials out of git; inject via `.env` or your shell when you decide to update clients.
+- Client-side placeholders live in `secrets/templates/kafka/` (`client_jaas.conf`, `client.properties`) for local copies.
+- Keep real credentials out of git; use `secrets/local.env` or your shell when you decide to update clients.
 
 ### Kafka cluster (KRaft)
 - Role:
@@ -198,7 +209,7 @@ docker compose up -d
 ```
 
 #### Smoke tests
-- Prepare Kafka client properties inside the broker container (uses values from `.env`):
+- Prepare Kafka client properties inside the broker container (uses `.env` + `secrets/local.env`):
 ```bash
 docker compose exec -T \
   -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
@@ -322,7 +333,7 @@ curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
 
 ##### Avro messages (optional)
 - Set `KAFKA_SMOKE_TEST_AVRO_TOPIC`, `KAFKA_SMOKE_TEST_AVRO_SUBJECT`, `BOOTSTRAP_SERVERS_INTERNAL`, and `SCHEMA_REGISTRY_URL_INTERNAL` in `.env` before running these steps.
-- Prepare Kafka client properties inside the Schema Registry container (uses values from `.env`):
+- Prepare Kafka client properties inside the Schema Registry container (uses `.env` + `secrets/local.env`):
 ```bash
 docker compose exec -T \
   -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
@@ -408,7 +419,7 @@ curl -s "${CONNECT_URL}/connectors"
 ```bash
 curl -s "${CONNECT_URL}/" | jq
 ```
-- Prepare Kafka client properties inside the broker container (uses values from `.env`):
+- Prepare Kafka client properties inside the broker container (uses `.env` + `secrets/local.env`):
 ```bash
 docker compose exec -T \
   -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
@@ -469,7 +480,8 @@ curl -s "${CONNECT_URL}/connector-plugins" | jq -r '.[].class'
 
 ### Example ClickHouse sink connector (single topic → single table, native plugin)
 - Config file: `configs/connect/clickhouse-sink.json` (maps topic `kafka-avro-events` to table `kafka_avro_events` via `topic2TableMap` for the native ClickHouse sink; uses HTTP host/port/username/password fields expected by the connector; the default `hostname` targets `clickhouse-haproxy` for load-balanced access and uses port `8123` because containers talk on the internal network, not the host-mapped `18123`. SASL auth is handled by the Kafka Connect worker config in `docker-compose.yml`, so the connector JSON does not need extra Kafka auth settings.)
-- Kafka Connect uses the writer credentials by default; update `CLICKHOUSE_WRITER_PASSWORD` in `.env` if you change the password.
+- The sample config ships with a placeholder password; inject the real writer password at deploy time.
+- Kafka Connect uses the writer credentials by default; update `CLICKHOUSE_WRITER_PASSWORD` in `secrets/local.env` if you change the password.
 - Note: the native ClickHouse sink defaults to using the Kafka topic name as the table name unless `topic2TableMap` is provided. We keep hyphens in Kafka topics but underscores in ClickHouse table names, so the explicit map is required.
 - Prerequisites:
   - ClickHouse table exists: create via `sql/ddl/clickhouse_kafka_avro_events.sql`.
@@ -483,7 +495,7 @@ docker compose up -d kafka-connect
 ```bash
 curl -s "${CONNECT_URL}/connector-plugins" | jq -r '.[].class' | rg ClickHouseSinkConnector
 ```
-- Deploy (inject writer credentials from `.env`):
+- Deploy (inject writer credentials from `secrets/local.env`):
 ```bash
 jq --arg user "${CLICKHOUSE_WRITER_USER}" \
    --arg pass "${CLICKHOUSE_WRITER_PASSWORD}" \
@@ -502,23 +514,23 @@ curl -s "${CONNECT_URL}/connectors/clickhouse-sink/status" | jq
 #### Setup
 - Create a pyenv virtualenv and install dependencies:
 ```bash
-scripts/setup_python.sh
+scripts/setup/setup_python.sh
 pyenv activate kafka-clickhouse
 ```
 #### Environment
-- Before running Python tools, load `.env` into your shell:
+- Before running Python tools, load `.env` + `secrets/local.env` into your shell:
 ```bash
 source scripts/source_env.sh
 ```
 #### Helper runner
-- Run Python tools with `.env` loaded and the `kafka-clickhouse` pyenv activated:
+- Run Python tools with `.env` + `secrets/local.env` loaded and the `kafka-clickhouse` pyenv activated:
 ```bash
 scripts/run_python_tool.sh kafka_avro_producer.py
 ```
 
 #### Avro producer
 - Script: `scripts/python/kafka_avro_producer.py` (run via `scripts/run_python_tool.sh` for pyenv + `.env` compatibility).
-- Run (uses values from `.env`, matches the Avro schema used by `kafka-avro-events`):
+- Run (uses values from `.env` + `secrets/local.env`, matches the Avro schema used by `kafka-avro-events`):
 ```bash
 scripts/run_python_tool.sh kafka_avro_producer.py
 ```
@@ -526,7 +538,7 @@ scripts/run_python_tool.sh kafka_avro_producer.py
 
 #### Avro consumer
 - Script: `scripts/python/kafka_avro_consumer.py` (run via `scripts/run_python_tool.sh` for pyenv + `.env` compatibility).
-- Run (uses values from `.env`):
+- Run (uses values from `.env` + `secrets/local.env`):
 ```bash
 scripts/run_python_tool.sh kafka_avro_consumer.py
 ```
@@ -534,7 +546,7 @@ scripts/run_python_tool.sh kafka_avro_consumer.py
 
 #### JSON producer
 - Script: `scripts/python/kafka_json_producer.py` (run via `scripts/run_python_tool.sh` for pyenv + `.env` compatibility).
-- Run (uses values from `.env`, writes JSON to `kafka-json-events`):
+- Run (uses values from `.env` + `secrets/local.env`, writes JSON to `kafka-json-events`):
 ```bash
 scripts/run_python_tool.sh kafka_json_producer.py
 ```
@@ -542,7 +554,7 @@ scripts/run_python_tool.sh kafka_json_producer.py
 
 #### JSON consumer
 - Script: `scripts/python/kafka_json_consumer.py` (run via `scripts/run_python_tool.sh` for pyenv + `.env` compatibility).
-- Run (uses values from `.env`):
+- Run (uses values from `.env` + `secrets/local.env`):
 ```bash
 scripts/run_python_tool.sh kafka_json_consumer.py
 ```
@@ -550,11 +562,11 @@ scripts/run_python_tool.sh kafka_json_consumer.py
 
 #### ClickHouse query (HTTP via HAProxy)
 - Script: `scripts/python/query_clickhouse.py`
-- Run (uses values from `.env`):
+- Run (uses values from `.env` + `secrets/local.env`):
 ```bash
 scripts/run_python_tool.sh query_clickhouse.py
 ```
-- To change the endpoint or query scope, update `CLICKHOUSE_HTTP`, `KAFKA_AVRO_EVENTS_TABLE`, `LIMIT`, and the reader credentials in `.env` and re-run.
+- To change the endpoint or query scope, update `CLICKHOUSE_HTTP`, `KAFKA_AVRO_EVENTS_TABLE`, `LIMIT`, and the reader credentials in `secrets/local.env` and re-run.
 
 ## ClickHouse
 - Role:
@@ -569,15 +581,14 @@ scripts/run_python_tool.sh query_clickhouse.py
     - ClickHouse Keeper: `localhost:9181`
   - Tip: point BI/HTTP clients (e.g., Metabase) at the HAProxy endpoint; it health-checks `/ping` and round-robins the two nodes.
 ### Credentials
-- HTTP/TCP: configured via `.env` (`CLICKHOUSE_USER`, `CLICKHOUSE_ADMIN_PASSWORD`)
-  - Update `.env`, then start ClickHouse (see Run). Changing credentials later requires recreating the container.
+- HTTP/TCP: configured via `.env` (usernames) + `secrets/local.env` (passwords)
+  - Update `secrets/local.env`, then start ClickHouse (see Run). Changing credentials later requires recreating the container.
   - Default user is removed to enforce auth.
   - `configs/clickhouse/users.d/50-users-auth.xml` creates `admin`, `writer`, and `reader` users using env-sourced passwords; the `50-` prefix ensures it loads after ClickHouse's generated `default-user.xml`.
-  - The ClickHouse image expects `CLICKHOUSE_PASSWORD`; Docker Compose maps it to `CLICKHOUSE_ADMIN_PASSWORD` for clarity.
   - Writer/reader restrictions are enforced via profiles (`readonly=2` for reader to allow safe settings changes; `allow_ddl=0` for writer/reader).
-- `CLICKHOUSE_USER` is expected to remain `admin` unless you also update the ClickHouse user config.
+- `CLICKHOUSE_ADMIN_USER` is expected to remain `admin` unless you also update the ClickHouse user config.
 - Kafka Connect is wired to the writer user; the JSON config is updated in the smoke test using `CLICKHOUSE_WRITER_USER`/`CLICKHOUSE_WRITER_PASSWORD`.
-  - To change admin credentials: update `CLICKHOUSE_ADMIN_PASSWORD` in `.env`, then recreate ClickHouse:
+  - To change admin credentials: update `CLICKHOUSE_ADMIN_PASSWORD` in `secrets/local.env`, then recreate ClickHouse:
 ```bash
 docker compose down
 docker compose up -d clickhouse-keeper clickhouse-1 clickhouse-2
@@ -587,7 +598,7 @@ docker compose up -d clickhouse-keeper clickhouse-1 clickhouse-2
 # should fail without credentials
 curl -sS "${CLICKHOUSE_HTTP}/?query=SELECT+1"
 # should succeed with admin credentials
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_HTTP}/?query=SELECT+currentUser()"
 ```
 ### Config overrides
@@ -604,7 +615,7 @@ curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   - `cluster.xml` defines the `clickhouse_cluster` with two replicas.
   - `00-macros.xml` sets `shard`/`replica` macros per node.
   - `cors.xml` enables `add_http_cors_header` for HTTP UI queries.
-- Default admin user for local dev lives in `configs/clickhouse/users.d/50-users-auth.xml` (matches `.env.example` credentials).
+- Default admin user for local dev lives in `configs/clickhouse/users.d/50-users-auth.xml` (matches `secrets/templates/local.env`).
 - To activate or add overrides: place a `.xml` file in the node-specific folders above (or shared users.d), then restart:
 ```bash
 docker compose restart clickhouse
@@ -639,47 +650,47 @@ docker compose logs -f clickhouse-2
 ### Smoke tests
 - Ping via HAProxy (returns `Ok.`):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" "${CLICKHOUSE_HTTP}/ping"
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" "${CLICKHOUSE_HTTP}/ping"
   ```
 - Ping a specific node if needed:
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" "${CLICKHOUSE_NODE1_HTTP}/ping"
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" "${CLICKHOUSE_NODE1_HTTP}/ping"
   ```
 - Healthcheck note: the container reports healthy after this succeeds (it may take a few seconds on first start):
 ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_HTTP}/?query=SELECT+1"\
 ```
 - Confirm effective user/profile (verifies overrides are applied):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_HTTP}/?query=SELECT+currentUser(),+currentProfiles()"
   ```
 - Verify replication and persistence:
   ```bash
   # create a test table ON CLUSTER and write one row (ReplicatedMergeTree)
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     -X POST -d '' "${CLICKHOUSE_HTTP}/?query=CREATE+TABLE+IF+NOT+EXISTS+smoke_test_replication+ON+CLUSTER+clickhouse_cluster(id+UInt32)+ENGINE=ReplicatedMergeTree(%27/clickhouse/{shard}/smoke_test_replication%27,%27{replica}%27)+ORDER+BY+id"
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     -X POST -d '' "${CLICKHOUSE_HTTP}/?query=INSERT+INTO+smoke_test_replication+VALUES(1)"
 
   # read from node 2 to confirm replication
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_NODE2_HTTP}/?query=SELECT+*+FROM+smoke_test_replication"
   ```
 - Kafka JSON store read (stable; queries persisted rows):
   ```bash
-  curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
     "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
   ```
-- Play UI (opens in browser; uses admin credentials in query params):
-  [http://localhost:8123/play?user=admin&password=clickhouse](http://localhost:8123/play?user=admin&password=clickhouse) (update the URL if you change credentials)
+- Play UI (opens in browser; enter admin credentials from `secrets/local.env`):
+  [http://localhost:8123/play](http://localhost:8123/play)
 
 ### Auth checks
 - Permission profiles:
   - reader: `readonly=2`, `allow_ddl=0`, `allow_introspection_functions=0` (read-only, with settings-level readonly mode so UI per-query settings are allowed)
   - writer: `readonly=0`, `allow_ddl=0`, `allow_introspection_functions=0` (can read/write data, but no DDL and no introspection)
-- Verify effective grants (use the passwords from `.env`):
+- Verify effective grants (use the passwords from `secrets/local.env`):
 ```bash
 curl -sS -u "${CLICKHOUSE_READER_USER}:${CLICKHOUSE_READER_PASSWORD}" \
   "${CLICKHOUSE_HTTP}/?query=SHOW+GRANTS"
@@ -697,19 +708,19 @@ curl -sS -u "${CLICKHOUSE_WRITER_USER}:${CLICKHOUSE_WRITER_PASSWORD}" \
 - When to create: after ClickHouse and ClickHouse Keeper are up and before wiring a Kafka Connect sink; run once per environment.
 - How to create on all replicas (preferred): run ON CLUSTER once from any node:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_internal_db.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_avro_events.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_table.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_mv.sql \
   "${CLICKHOUSE_HTTP}/?query="
 ```
@@ -717,14 +728,14 @@ curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
 
 ## End-to-end smoke test: Schema Registry → Kafka → ClickHouse (Avro)
 - Prereqs: ClickHouse tables exist (`sql/ddl/clickhouse_kafka_internal_db.sql`, `sql/ddl/clickhouse_kafka_avro_events.sql`, `sql/ddl/clickhouse_kafka_json_events.sql`, `sql/ddl/clickhouse_kafka_json_events_store_table.sql`, `sql/ddl/clickhouse_kafka_json_events_store_mv.sql`), ClickHouse sink connector is RUNNING, Schema Registry up. The bundled connector config already uses Avro converters. Set `KAFKA_AVRO_EVENTS_TOPIC` and `KAFKA_AVRO_EVENTS_SUBJECT` in `.env` if you changed them.
-- Ensure `.env` includes `KAFKA_CLIENT_SASL_USERNAME` and `KAFKA_CLIENT_SASL_PASSWORD`.
-- Load `.env` into your shell before running any commands in this section:
+- Ensure `.env` + `secrets/local.env` include the Kafka client credentials.
+- Load `.env` + `secrets/local.env` into your shell before running any commands in this section:
 ```bash
 source scripts/source_env.sh
 ```
-- One-shot script (non-interactive) that runs these steps (expects `.env` already loaded; fails fast if the connector is not RUNNING):
+- One-shot script (non-interactive) that runs these steps (expects `.env` + `secrets/local.env` already loaded; fails fast if the connector is not RUNNING):
 ```bash
-scripts/smoke_test.sh
+scripts/tests/smoke_test.sh
 ```
 - Topic name uses a hyphen (see `KAFKA_AVRO_EVENTS_TOPIC` in `.env`) to avoid Kafka’s metrics collision warning for dots vs underscores.
 - Prepare Kafka client properties inside containers for the manual Kafka CLI steps:
@@ -748,31 +759,31 @@ EOF'
 ```
 - Apply the DDLs on the cluster (manual smoke test prerequisite):
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_avro_events.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_table.sql \
   "${CLICKHOUSE_HTTP}/?query="
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   -X POST --data-binary @sql/ddl/clickhouse_kafka_json_events_store_mv.sql \
   "${CLICKHOUSE_HTTP}/?query="
 ```
 - Wait for the table to exist on both nodes (avoid HAProxy routing to a node that has not applied the DDL yet):
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_AVRO_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_AVRO_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}"
 ```
-- Apply the connector config (idempotent; inject writer credentials from `.env`):
+- Apply the connector config (idempotent; inject writer credentials from `secrets/local.env`):
 ```bash
 jq --arg user "${CLICKHOUSE_WRITER_USER}" \
    --arg pass "${CLICKHOUSE_WRITER_PASSWORD}" \
@@ -831,6 +842,26 @@ for id in 1 2 3 4 5; do
   sleep 1
 done
 ```
+- Verify rows landed in ClickHouse:
+```bash
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SELECT+count(),+min(id),+max(id)+FROM+${KAFKA_AVRO_EVENTS_TABLE}"
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+  "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_AVRO_EVENTS_TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
+```
+- Start a JSON consumer (latest message):
+```bash
+json_consumer_out="$(mktemp)"
+docker compose exec -T \
+  kafka-broker-1 kafka-console-consumer \
+  --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
+  --consumer.config /tmp/client.properties \
+  --topic "${KAFKA_JSON_EVENTS_TOPIC}" \
+  --max-messages 1 \
+  --timeout-ms 10000 \
+  >"${json_consumer_out}" &
+json_consumer_pid=$!
+```
 - Produce a JSON message to `kafka-json-events` (timestamp uses ClickHouse-friendly format):
 ```bash
 ts="$(date -u +"%Y-%m-%d %H:%M:%S")"
@@ -841,16 +872,15 @@ printf '{"id":101,"source":"smoke-json","ts":"%s","payload":"hello-json"}\n' "${
   --topic "${KAFKA_JSON_EVENTS_TOPIC}" \
   --producer.config /tmp/client.properties
 ```
-- Verify rows landed in ClickHouse:
+- Consume one JSON message (latest):
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  "${CLICKHOUSE_HTTP}/?query=SELECT+count(),+min(id),+max(id)+FROM+${KAFKA_AVRO_EVENTS_TABLE}"
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_AVRO_EVENTS_TABLE}+ORDER+BY+ts+DESC+LIMIT+5"
+wait "${json_consumer_pid}" || true
+cat "${json_consumer_out}"
+rm -f "${json_consumer_out}"
 ```
 - Verify the JSON store table via HAProxy:
 ```bash
-curl -sS -u "${CLICKHOUSE_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
   "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}+ORDER+BY+ts+DESC+LIMIT+1"
 ```
 - If anything fails, check connector status/logs:
