@@ -13,8 +13,6 @@ cd "$ROOT_DIR"
 
 : "${CLICKHOUSE_ADMIN_USER:?Missing CLICKHOUSE_ADMIN_USER (run: source scripts/source_env.sh)}"
 : "${CLICKHOUSE_ADMIN_PASSWORD:?Missing CLICKHOUSE_ADMIN_PASSWORD (run: source scripts/source_env.sh)}"
-: "${KAFKA_CLIENT_SASL_USERNAME:?Missing KAFKA_CLIENT_SASL_USERNAME (run: source scripts/source_env.sh)}"
-: "${KAFKA_CLIENT_SASL_PASSWORD:?Missing KAFKA_CLIENT_SASL_PASSWORD (run: source scripts/source_env.sh)}"
 : "${KAFKA_INTERNAL_DB:?Missing KAFKA_INTERNAL_DB (run: source scripts/source_env.sh)}"
 : "${KAFKA_INTERNAL_DB_DDL:?Missing KAFKA_INTERNAL_DB_DDL (run: source scripts/source_env.sh)}"
 : "${KAFKA_JSON_EVENTS_TABLE:?Missing KAFKA_JSON_EVENTS_TABLE (run: source scripts/source_env.sh)}"
@@ -39,85 +37,66 @@ require curl
 require docker
 require jq
 
-create_client_properties() {
-  local container="$1"
-  docker compose exec -T \
-    -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
-    -e KAFKA_CLIENT_SASL_PASSWORD="${KAFKA_CLIENT_SASL_PASSWORD}" \
-    "${container}" bash -ec 'cat > /tmp/client.properties <<EOF
-security.protocol=SASL_PLAINTEXT
-sasl.mechanism=PLAIN
-sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_CLIENT_SASL_USERNAME}" password="${KAFKA_CLIENT_SASL_PASSWORD}";
-EOF'
+ch_query() {
+  local query="$1"
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+    "${CLICKHOUSE_HTTP}/?query=${query}"
 }
 
-echo "0) Prepare Kafka client config inside kafka-broker-1"
-create_client_properties kafka-broker-1
+ch_post_ddl() {
+  local ddl_path="$1"
+  curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+    -X POST --data-binary @"${ddl_path}" \
+    "${CLICKHOUSE_HTTP}/?query=" >/dev/null
+}
+
+wait_for_table() {
+  local db="$1"
+  local table="$2"
+  local label="$3"
+  local exists=false
+  for _ in {1..12}; do
+    node1="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+      "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+${db}.${table}")"
+    node2="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
+      "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+${db}.${table}")"
+    if [[ "${node1}" == "1" && "${node2}" == "1" ]]; then
+      exists=true
+      break
+    fi
+    sleep 2
+  done
+  if [[ "${exists}" != "true" ]]; then
+    echo "ClickHouse table ${label} did not appear on both nodes; check DDL replication." >&2
+    exit 1
+  fi
+}
+
+client_config_path="/etc/kafka/secrets/client.properties"
 
 echo "1) Register JSON schema for ${KAFKA_JSON_EVENTS_TOPIC}"
-schema_payload="$(mktemp)"
-jq -n --slurpfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
-  '{schemaType:"JSON", schema: ($schema[0] | tojson)}' > "${schema_payload}"
 curl -s -X POST -H 'Content-Type: application/vnd.schemaregistry.v1+json' \
-  --data @"${schema_payload}" \
+  --data "$(jq -n --slurpfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
+    '{schemaType:"JSON", schema: ($schema[0] | tojson)}')" \
   "${SCHEMA_REGISTRY_URL}/subjects/${KAFKA_JSON_EVENTS_SUBJECT}/versions" | jq .
-rm -f "${schema_payload}"
 
 echo "2) Apply ClickHouse DDLs (Kafka internal DB + JSON tables)"
-curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  -X POST --data-binary @"${KAFKA_INTERNAL_DB_DDL}" \
-  "${CLICKHOUSE_HTTP}/?query=" >/dev/null
-curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  -X POST --data-binary @"${KAFKA_JSON_EVENTS_TABLE_DDL}" \
-  "${CLICKHOUSE_HTTP}/?query=" >/dev/null
-curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  -X POST --data-binary @"${KAFKA_JSON_EVENTS_STORE_TABLE_DDL}" \
-  "${CLICKHOUSE_HTTP}/?query=" >/dev/null
-curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  -X POST --data-binary @"${KAFKA_JSON_EVENTS_STORE_MV_DDL}" \
-  "${CLICKHOUSE_HTTP}/?query=" >/dev/null
+ch_post_ddl "${KAFKA_INTERNAL_DB_DDL}"
+ch_post_ddl "${KAFKA_JSON_EVENTS_TABLE_DDL}"
+ch_post_ddl "${KAFKA_JSON_EVENTS_STORE_TABLE_DDL}"
+ch_post_ddl "${KAFKA_JSON_EVENTS_STORE_MV_DDL}"
 
 echo "3) Confirm JSON Kafka engine table exists on both nodes"
-json_table_exists=false
-for _ in {1..12}; do
-  node1="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-    "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}")"
-  node2="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-    "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+${KAFKA_INTERNAL_DB}.${KAFKA_JSON_EVENTS_TABLE}")"
-  if [[ "${node1}" == "1" && "${node2}" == "1" ]]; then
-    json_table_exists=true
-    break
-  fi
-  sleep 2
-done
-if [[ "${json_table_exists}" != "true" ]]; then
-  echo "ClickHouse table ${KAFKA_JSON_EVENTS_TABLE} did not appear on both nodes; check DDL replication." >&2
-  exit 1
-fi
+wait_for_table "${KAFKA_INTERNAL_DB}" "${KAFKA_JSON_EVENTS_TABLE}" "${KAFKA_JSON_EVENTS_TABLE}"
 
 echo "4) Confirm JSON store table exists on both nodes"
-json_store_exists=false
-for _ in {1..12}; do
-  node1="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-    "${CLICKHOUSE_NODE1_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_JSON_EVENTS_STORE_TABLE}")"
-  node2="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-    "${CLICKHOUSE_NODE2_HTTP}/?query=EXISTS+TABLE+default.${KAFKA_JSON_EVENTS_STORE_TABLE}")"
-  if [[ "${node1}" == "1" && "${node2}" == "1" ]]; then
-    json_store_exists=true
-    break
-  fi
-  sleep 2
-done
-if [[ "${json_store_exists}" != "true" ]]; then
-  echo "ClickHouse table ${KAFKA_JSON_EVENTS_STORE_TABLE} did not appear on both nodes; check DDL replication." >&2
-  exit 1
-fi
+wait_for_table "default" "${KAFKA_JSON_EVENTS_STORE_TABLE}" "${KAFKA_JSON_EVENTS_STORE_TABLE}"
 
 echo "5) Ensure Kafka topic exists (${KAFKA_JSON_EVENTS_TOPIC})"
 docker compose exec \
   kafka-broker-1 kafka-topics \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
-  --command-config /tmp/client.properties \
+  --command-config "${client_config_path}" \
   --create --if-not-exists --topic "${KAFKA_JSON_EVENTS_TOPIC}" \
   --replication-factor 3 --partitions 1
 
@@ -128,13 +107,13 @@ printf '{"id":%s,"source":"smoke-json","ts":"%s","payload":"hello-json"}\n' \
   kafka-broker-1 kafka-console-producer \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --topic "${KAFKA_JSON_EVENTS_TOPIC}" \
-  --producer.config /tmp/client.properties
+  --producer.config "${client_config_path}"
 
 echo "7) Consume one JSON message from ${KAFKA_JSON_EVENTS_TOPIC}"
 docker compose exec -T \
   kafka-broker-1 kafka-console-consumer \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
-  --consumer.config /tmp/client.properties \
+  --consumer.config "${client_config_path}" \
   --topic "${KAFKA_JSON_EVENTS_TOPIC}" \
   --from-beginning \
   --max-messages 1 \
@@ -143,12 +122,10 @@ docker compose exec -T \
 echo "8) Verify JSON store table via HAProxy (${KAFKA_JSON_EVENTS_STORE_TABLE})"
 json_rows="0"
 for _ in {1..12}; do
-  json_rows="$(curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-    "${CLICKHOUSE_HTTP}/?query=SELECT+count()+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}")"
+  json_rows="$(ch_query "SELECT+count()+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}")"
   if [[ "${json_rows}" != "0" ]]; then
     break
   fi
   sleep 2
 done
-curl -sS -u "${CLICKHOUSE_ADMIN_USER}:${CLICKHOUSE_ADMIN_PASSWORD}" \
-  "${CLICKHOUSE_HTTP}/?query=SELECT+*+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}+ORDER+BY+ts+DESC+LIMIT+1"
+ch_query "SELECT+*+FROM+${KAFKA_JSON_EVENTS_STORE_TABLE}+ORDER+BY+ts+DESC+LIMIT+1"

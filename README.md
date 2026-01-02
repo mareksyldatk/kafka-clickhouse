@@ -46,7 +46,7 @@ docker run --rm confluentinc/cp-kafka:7.7.7 kafka-storage.sh random-uuid
 scripts/setup/initial_setup.sh
 ```
 - `secrets/local.env` holds passwords for ClickHouse and Kafka SASL.
-- `secrets/kafka/` holds the JAAS files mounted into Kafka and Schema Registry.
+- `secrets/kafka/` holds the JAAS files and `client.properties` mounted into Kafka and Schema Registry. Replace the placeholders in `secrets/kafka/client.properties` after running setup.
 - `secrets/clickhouse/` is mounted into ClickHouse for optional TLS/cert files.
 - Portability note: `secrets/local.env` uses flat `KEY=VALUE` pairs so it can be reused as a CI env file or mapped directly into Kubernetes `envFrom`/Secret keys later.
 ## Local environment
@@ -200,24 +200,14 @@ docker compose up -d
 ```
 
 #### Smoke tests
-- Prepare Kafka client properties inside the broker container (uses `.env` + `secrets/local.env`):
-```bash
-docker compose exec -T \
-  -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
-  -e KAFKA_CLIENT_SASL_PASSWORD="${KAFKA_CLIENT_SASL_PASSWORD}" \
-  kafka-broker-1 bash -ec 'cat > /tmp/client.properties <<EOF
-security.protocol=SASL_PLAINTEXT
-sasl.mechanism=PLAIN
-sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_CLIENT_SASL_USERNAME}" password="${KAFKA_CLIENT_SASL_PASSWORD}";
-EOF'
-```
+- Ensure `secrets/kafka/client.properties` contains real credentials (not `${...}` placeholders) and is mounted at `/etc/kafka/secrets/client.properties` in the broker container.
 ##### Topic lifecycle
 - Create the topic (idempotent if it already exists). Set `KAFKA_SMOKE_TEST_TOPIC` and `BOOTSTRAP_SERVERS_INTERNAL` in `.env` first:
 ```bash
 docker compose exec \
   kafka-broker-1 kafka-topics \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
-  --command-config /tmp/client.properties \
+  --command-config /etc/kafka/secrets/client.properties \
   --create \
   --if-not-exists \
   --topic "${KAFKA_SMOKE_TEST_TOPIC}" \
@@ -229,7 +219,7 @@ docker compose exec \
 docker compose exec \
   kafka-broker-1 kafka-topics \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
-  --command-config /tmp/client.properties \
+  --command-config /etc/kafka/secrets/client.properties \
   --list
 ```
 
@@ -239,7 +229,7 @@ docker compose exec \
 docker compose exec -T \
   kafka-broker-1 kafka-console-producer \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
-  --producer.config /tmp/client.properties \
+  --producer.config /etc/kafka/secrets/client.properties \
   --topic "${KAFKA_SMOKE_TEST_TOPIC}"
 ```
 - Consume from the start (reads historical messages; exits after 10):
@@ -247,7 +237,7 @@ docker compose exec -T \
 docker compose exec -T \
   kafka-broker-1 kafka-console-consumer \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
-  --consumer.config /tmp/client.properties \
+  --consumer.config /etc/kafka/secrets/client.properties \
   --topic "${KAFKA_SMOKE_TEST_TOPIC}" \
   --from-beginning \
   --max-messages 10
@@ -260,7 +250,7 @@ docker compose restart kafka-broker-1
 docker compose exec \
   kafka-broker-1 kafka-topics \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
-  --command-config /tmp/client.properties \
+  --command-config /etc/kafka/secrets/client.properties \
   --list
 ```
 
@@ -502,17 +492,7 @@ source scripts/source_env.sh
 scripts/tests/smoke_test.sh
 ```
 - Manual steps (quick check):
-  - Prepare Kafka client properties inside the broker container:
-```bash
-docker compose exec -T \
-  -e KAFKA_CLIENT_SASL_USERNAME="${KAFKA_CLIENT_SASL_USERNAME}" \
-  -e KAFKA_CLIENT_SASL_PASSWORD="${KAFKA_CLIENT_SASL_PASSWORD}" \
-  kafka-broker-1 bash -ec 'cat > /tmp/client.properties <<EOF
-security.protocol=SASL_PLAINTEXT
-sasl.mechanism=PLAIN
-sasl.jaas.config=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_CLIENT_SASL_USERNAME}" password="${KAFKA_CLIENT_SASL_PASSWORD}";
-EOF'
-```
+  - Ensure `secrets/kafka/client.properties` contains real credentials and is mounted at `/etc/kafka/secrets/client.properties`.
   - Register/update the JSON schema:
 ```bash
 jq -n --slurpfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
@@ -526,7 +506,7 @@ jq -n --slurpfile schema "${KAFKA_JSON_EVENTS_SCHEMA_FILE}" \
 docker compose exec \
   kafka-broker-1 kafka-topics \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
-  --command-config /tmp/client.properties \
+  --command-config /etc/kafka/secrets/client.properties \
   --create --if-not-exists --topic "${KAFKA_JSON_EVENTS_TOPIC}" \
   --replication-factor 3 --partitions 1
 ```
@@ -538,7 +518,7 @@ printf '{"id":101,"source":"smoke-json","ts":"%s","payload":"hello-json"}\n' "${
   kafka-broker-1 kafka-console-producer \
   --bootstrap-server "${BOOTSTRAP_SERVERS_INTERNAL}" \
   --topic "${KAFKA_JSON_EVENTS_TOPIC}" \
-  --producer.config /tmp/client.properties
+  --producer.config /etc/kafka/secrets/client.properties
 ```
   - Verify the JSON store table via HAProxy:
 ```bash
