@@ -343,8 +343,8 @@ scripts/run_python_tool.sh query_clickhouse.py
 - HTTP/TCP: configured via `.env` (usernames) + `secrets/local.env` (passwords)
   - Update `secrets/local.env`, then start ClickHouse (see Run). Changing credentials later requires recreating the container.
   - Default user is removed to enforce auth.
-  - `configs/clickhouse/users.d/50-users-auth.xml` creates `admin`, `writer`, and `reader` users using env-sourced passwords; the `50-` prefix ensures it loads after ClickHouse's generated `default-user.xml`.
-  - Writer/reader restrictions are enforced via profiles (`readonly=2` for reader to allow safe settings changes; `allow_ddl=0` for writer/reader).
+  - `configs/clickhouse/users.d/50-users-auth.xml` creates `admin` and `reader` users using env-sourced passwords; the `50-` prefix ensures it loads after ClickHouse's generated `default-user.xml`.
+  - Reader restrictions are enforced via profiles (`readonly=2` to allow safe settings changes; `allow_ddl=0` to block DDL).
 - `CLICKHOUSE_ADMIN_USER` is expected to remain `admin` unless you also update the ClickHouse user config.
   - To change admin credentials: update `CLICKHOUSE_ADMIN_PASSWORD` in `secrets/local.env`, then recreate ClickHouse:
 ```bash
@@ -447,12 +447,9 @@ docker compose logs -f clickhouse-2
 ### Auth checks
 - Permission profiles:
   - reader: `readonly=2`, `allow_ddl=0`, `allow_introspection_functions=0` (read-only, with settings-level readonly mode so UI per-query settings are allowed)
-  - writer: `readonly=0`, `allow_ddl=0`, `allow_introspection_functions=0` (can read/write data, but no DDL and no introspection)
 - Verify effective grants (use the passwords from `secrets/local.env`):
 ```bash
 curl -sS -u "${CLICKHOUSE_READER_USER}:${CLICKHOUSE_READER_PASSWORD}" \
-  "${CLICKHOUSE_HTTP}/?query=SHOW+GRANTS"
-curl -sS -u "${CLICKHOUSE_WRITER_USER}:${CLICKHOUSE_WRITER_PASSWORD}" \
   "${CLICKHOUSE_HTTP}/?query=SHOW+GRANTS"
 ```
 
