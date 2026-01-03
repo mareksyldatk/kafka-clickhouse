@@ -49,3 +49,35 @@ Load local images into the cluster:
 ```bash
 scripts/k8s/load_kind_image.sh <image> [image...]
 ```
+
+## `kubectl` quick lookup
+
+### Cluster + context
+- `kubectl config get-contexts` — list contexts
+- `kubectl config use-context kind-kafka-clickhouse` — switch context
+- `kubectl cluster-info` — cluster endpoints
+
+### Nodes + namespaces
+- `kubectl get nodes -o wide` — node status + IPs
+- `kubectl get namespaces` — list namespaces
+- `kubectl create namespace <name>` — add namespace
+
+### Workloads + resources
+- `kubectl get pods -A` — all pods
+- `kubectl get deploy -A` — all deployments
+- `kubectl get svc -A` — all services
+- `kubectl describe pod <pod> -n <ns>` — pod details/events
+
+### Logs + exec
+- `kubectl logs <pod> -n <ns> --tail=200` — recent logs
+- `kubectl logs -f <pod> -n <ns>` — follow logs
+- `kubectl exec -it <pod> -n <ns> -- /bin/sh` — shell in container
+
+### Apply + cleanup
+- `kubectl apply -k k8s/overlays/local` — apply local kustomize
+- `kubectl delete -k k8s/overlays/local` — delete local kustomize
+- `kubectl delete pod <pod> -n <ns>` — restart a pod
+
+### Troubleshooting
+- `kubectl get events -A --sort-by=.metadata.creationTimestamp` — recent events
+- `kubectl top pods -A` — pod CPU/mem (metrics-server required)
