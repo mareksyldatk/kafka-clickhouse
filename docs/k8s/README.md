@@ -10,6 +10,16 @@ This repo uses a simple, industry-standard local Kubernetes toolchain for Phase 
 - kind is designed for local clusters and CI, and supports multi-node clusters that approximate managed control planes.
 - Helm is the de facto standard for installing and managing Kubernetes packages.
 
+## Kind cluster config (local)
+- Cluster name: `kafka-clickhouse`
+- Config: `k8s/kind/cluster.yaml`
+- One control-plane node (no workers) until workloads require more nodes.
+- Deterministic local ports:
+  - Kubernetes API server: `127.0.0.1:6443`
+  - NodePort mappings: `30080` (HTTP), `30443` (HTTPS)
+
+The config stays portable by avoiding hostPath mounts; local differences should live in `k8s/overlays/local/`.
+
 ## Version pins (EKS-compatible)
 These version pins align with Amazon EKS standard support versions (1.32-1.34) and Kubernetes version-skew guidance. Keep kubectl within one minor version of your cluster.
 
@@ -23,3 +33,19 @@ These version pins align with Amazon EKS standard support versions (1.32-1.34) a
 - kind: https://kind.sigs.k8s.io/docs/user/quick-start/
 - kubectl: https://kubernetes.io/docs/tasks/tools/
 - helm: https://helm.sh/docs/intro/install/
+
+## Local workflow scripts
+Create the local cluster:
+```bash
+scripts/k8s/create_kind_cluster.sh
+```
+
+Delete the local cluster:
+```bash
+scripts/k8s/delete_kind_cluster.sh
+```
+
+Load local images into the cluster:
+```bash
+scripts/k8s/load_kind_image.sh <image> [image...]
+```
