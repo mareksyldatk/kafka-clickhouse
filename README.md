@@ -88,6 +88,11 @@ docker compose logs -f clickhouse-2
 ```bash
 scripts/setup/setup_python.sh
 ```
+- Install local Kubernetes toolchain (macOS/Homebrew):
+```bash
+scripts/setup/setup_k8s_toolchain_macos.sh
+```
+
 
 ## Logs & debugging
 - Kafka brokers/controllers (repeat per node):
@@ -540,3 +545,7 @@ docker compose logs schema-registry
 - ClickHouse Keeper errors / `Coordination::Exception`: restart keeper first, then clickhouse-1/2; ensure keeper listens on `0.0.0.0:9181`; drop keeper/CH volumes only if you can discard state.
 - ClickHouse `CANNOT_CREATE_TIMER` / `Failed to create thread timer`: local Docker can exhaust timer resources; this repo disables the query profiler via `configs/clickhouse/users.d/disable-query-profiler.xml` and the global profiler via `configs/clickhouse/node1/config.d/disable-global-profiler.xml` plus `configs/clickhouse/node2/config.d/disable-global-profiler.xml`. How to verify: `docker compose restart clickhouse-1 clickhouse-2`, then confirm the logs no longer show `CANNOT_CREATE_TIMER`.
 - No rows in ClickHouse: confirm the Kafka topic has data, the Kafka engine table settings match your broker/topic/format, and queries use the right endpoint (`${CLICKHOUSE_HTTP}`); check ClickHouse logs if ingestion stalls.
+
+## Local Kubernetes
+Local Kubernetes setup (kind, kubectl, Helm) and version guidance live in:
+[docs/k8s/README.md](./docs/k8s/README.md)
