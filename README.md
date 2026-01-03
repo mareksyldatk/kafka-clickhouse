@@ -15,6 +15,7 @@ scripts/docker_up.sh
 ## Repository layout
 - `docker-compose.yml` — Compose stack that grows one service at a time; currently includes Kafka (KRaft), Schema Registry, and ClickHouse.
 - `configs/` — mounted configuration files for services (ClickHouse overrides in `configs/clickhouse`).
+- `k8s/` — Kubernetes manifest scaffold (base/overlays/values).
 - `sql/` — ClickHouse schemas and setup scripts (DDLs live under `sql/ddl/`).
 - `scripts/` — helper scripts for local workflows.
 - `docs/clickhouse/` — short ClickHouse developer notes and references.

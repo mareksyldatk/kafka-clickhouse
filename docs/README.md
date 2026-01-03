@@ -41,6 +41,7 @@ The stack is intentionally built **in small, reviewable steps** to avoid hidden 
 ├── .env.example           # Non-sensitive defaults only
 ├── README.md              # This document
 ├── configs/               # Mounted service configs (ClickHouse)
+├── k8s/                   # Kubernetes manifest scaffold (base/overlays/values)
 ├── sql/                   # ClickHouse schemas and setup scripts
 └── scripts/               # Helper scripts (optional, documented)
 ```
