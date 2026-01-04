@@ -124,6 +124,7 @@ Deploy Kafka using a Helm chart (Bitnami or equivalent) in KRaft mode.
 Match the Compose topology: 3 controllers + 3 brokers, replication factor = 3.
 Enable SASL/PLAIN with secrets provided out-of-repo.
 Expose a local listener via the chosen access strategy.
+If HTTP UIs are added, define Ingress hostnames (kafka.local) and add /etc/hosts examples.
 Document a health check and a CLI smoke test using mounted client.properties.
 Pin chart/app versions and record them in docs/k8s/README.md.
 Recommended chart: bitnami/kafka with values in k8s/values/kafka.yaml.
@@ -138,7 +139,8 @@ Recommended chart: bitnami/kafka with values in k8s/values/kafka.yaml.
 **Prompt**
 ```text
 Deploy Schema Registry connected to Kafka over SASL.
-Expose it locally and add a basic "list subjects" check.
+Expose it locally via Ingress and add a basic "list subjects" check.
+Define a hostname (schema-registry.local) and add a /etc/hosts example.
 Add a JSON Schema registration example for kafka-json-events using a schema file.
 Document the subject naming convention and schema file location.
 Recommended chart: bitnami/schema-registry with values in k8s/values/schema-registry.yaml.
@@ -156,6 +158,7 @@ Recommended chart: bitnami/schema-registry with values in k8s/values/schema-regi
 Deploy ClickHouse using the Altinity ClickHouse Operator (industry standard) or an equivalent chart.
 Match Compose: 2-node replicated cluster + Keeper, with persistent volumes.
 Expose HTTP via Ingress + Service and native TCP via port-forward when needed.
+Define a hostname (clickhouse.local) and add a /etc/hosts example.
 Add a smoke test query.
 Pin operator/chart versions and record them in docs/k8s/README.md.
 Recommended path: Altinity operator + ClickHouseInstallation CR in k8s/base/clickhouse/.
