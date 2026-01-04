@@ -55,6 +55,51 @@ Load local images into the cluster:
 scripts/k8s/load_kind_image.sh <image> [image...]
 ```
 
+## Kafka (Helm)
+Install Kafka (Bitnami chart, KRaft mode):
+```bash
+scripts/k8s/install_kafka.sh
+```
+
+Values file:
+```
+k8s/values/kafka.yaml
+```
+
+SASL/PLAIN credentials come from the `kafka-secrets` secret created by `scripts/k8s/load_secrets.sh --all`.
+
+Version pins:
+- Chart: `bitnami/kafka` `32.4.3`
+- App: `4.0.0`
+
+Local listener (NodePort, broker external access):
+- `127.0.0.1:30092`
+- `127.0.0.1:30093`
+- `127.0.0.1:30094`
+
+If you add an HTTP UI later, use `kafka.local` and add it to `/etc/hosts`.
+
+### Kafka health check
+```bash
+kubectl get pods -n kafka-clickhouse -l app.kubernetes.io/name=kafka
+kubectl wait --for=condition=Ready pod -n kafka-clickhouse -l app.kubernetes.io/name=kafka --timeout=300s
+```
+
+### Kafka CLI smoke test (client.properties)
+The Kafka client config is mounted into broker pods at:
+```
+/opt/bitnami/kafka/config/k8s-secrets/client.properties
+```
+
+List topics (from broker 0):
+```bash
+kubectl exec -n kafka-clickhouse kafka-broker-0 -- \
+  kafka-topics.sh \
+  --bootstrap-server kafka-broker-headless:9092 \
+  --command-config /opt/bitnami/kafka/config/k8s-secrets/client.properties \
+  --list
+```
+
 ## Local access strategy (Ingress + port-forward)
 ### Ingress (HTTP)
 We use the official `ingress-nginx` Helm chart with a pinned version and NodePort mapping for predictable local access. The chart is pinned to `4.14.1`. 
@@ -149,6 +194,8 @@ Secrets are created locally and are never committed to git. Use a consistent nam
 - `schema-registry-secrets`
 - `clickhouse-secrets`
 
+After updating `secrets/local.env`, re-run `scripts/setup/initial_setup.sh` to render the Kafka secret files under `secrets/kafka/`.
+
 Create a secret from literals (dev only):
 ```bash
 kubectl create secret generic kafka-secrets \
@@ -173,6 +220,11 @@ Load all project secrets (Kafka, Schema Registry, ClickHouse):
 ```bash
 scripts/k8s/load_secrets.sh --all
 ```
+
+Kafka SASL files (used by the Helm chart secret):
+- `secrets/kafka/client-passwords` (comma-separated, order must match `k8s/values/kafka.yaml` client users)
+- `secrets/kafka/inter-broker-password`
+- `secrets/kafka/controller-password`
 
 Template file:
 ```

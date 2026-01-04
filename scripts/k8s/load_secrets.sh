@@ -33,6 +33,9 @@ if [[ "$1" == "--all" ]]; then
   require_file "secrets/kafka/client.properties"
   require_file "secrets/kafka/client_jaas.conf"
   require_file "secrets/kafka/broker_jaas.conf"
+  require_file "secrets/kafka/client-passwords"
+  require_file "secrets/kafka/inter-broker-password"
+  require_file "secrets/kafka/controller-password"
   require_file "secrets/clickhouse/users.xml"
 
   if [[ "${#missing_files[@]}" -gt 0 ]]; then
@@ -47,6 +50,9 @@ if [[ "$1" == "--all" ]]; then
     --from-file=client.properties=secrets/kafka/client.properties \
     --from-file=client_jaas.conf=secrets/kafka/client_jaas.conf \
     --from-file=broker_jaas.conf=secrets/kafka/broker_jaas.conf \
+    --from-file=client-passwords=secrets/kafka/client-passwords \
+    --from-file=inter-broker-password=secrets/kafka/inter-broker-password \
+    --from-file=controller-password=secrets/kafka/controller-password \
     --dry-run=client -o yaml | kubectl apply -f -
 
   kubectl create secret generic schema-registry-secrets \

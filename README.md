@@ -101,6 +101,10 @@ scripts/k8s/install_ingress_nginx.sh
 ```bash
 scripts/k8s/load_secrets.sh --all
 ```
+- Install Kafka on Kubernetes (Helm):
+```bash
+scripts/k8s/install_kafka.sh
+```
 
 
 ## Logs & debugging
