@@ -50,6 +50,50 @@ Load local images into the cluster:
 scripts/k8s/load_kind_image.sh <image> [image...]
 ```
 
+## StorageClass + local volumes
+Apply the local StorageClass and provisioner:
+```bash
+kubectl apply -k k8s/overlays/local
+```
+
+This installs a default `standard` StorageClass backed by the local-path provisioner (kind only). PVCs can omit `storageClassName` unless a chart requires it. Prefer `standard` in values files when a name is needed.
+
+### How it fits together (local storage)
+```
+Namespace: <app-namespace>                      Namespace: local-path-storage
+---------------------------                     ---------------------------
+Pod (app)                                       Pod (local-path-provisioner)
+   |                                                     |
+   | uses PVC                                            | watches PVCs
+   v                                                     v
+PVC --------------------------> StorageClass: standard -> PV created
+                                                         |
+                                                         |
+                                                         v
+                                                 kind node storage
+                                             /var/local/path-provisioner
+```
+
+The provisioner runs in `local-path-storage`, watches for PVCs across the cluster, creates PVs on demand, and stores data inside the kind node container. Deleting the PVC deletes the PV data (reclaim policy: Delete).
+
+### Where data lives (kind)
+Persistent volumes are stored inside the kind node container at:
+```
+/var/local/path-provisioner
+```
+On macOS, this path lives inside the Docker VM, not directly on the host filesystem.
+
+### Resetting local volumes
+- Delete the cluster (removes all local PV data):
+```bash
+scripts/k8s/delete_kind_cluster.sh
+```
+- Or delete the local-path storage namespace (recreates on next apply):
+```bash
+kubectl delete namespace local-path-storage
+kubectl apply -k k8s/overlays/local
+```
+
 ## `kubectl` quick lookup
 
 ### Cluster + context
