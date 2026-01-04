@@ -3,3 +3,4 @@
 # Example files:
 # - server.crt
 # - server.key
+# - users.xml (template provided here)

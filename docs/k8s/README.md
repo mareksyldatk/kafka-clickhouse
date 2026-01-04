@@ -132,6 +132,55 @@ kubectl delete namespace local-path-storage
 kubectl apply -k k8s/overlays/local
 ```
 
+## Namespace + shared config
+Apply the namespace and shared ConfigMaps:
+```bash
+kubectl apply -k k8s/overlays/local
+```
+
+This creates the `kafka-clickhouse` namespace with common labels/annotations and scaffolds shared ConfigMaps:
+- `kafka-shared`
+- `schema-registry-shared`
+- `clickhouse-shared`
+
+## Secrets (local injection)
+Secrets are created locally and are never committed to git. Use a consistent naming scheme:
+- `kafka-secrets`
+- `schema-registry-secrets`
+- `clickhouse-secrets`
+
+Create a secret from literals (dev only):
+```bash
+kubectl create secret generic kafka-secrets \
+  --namespace kafka-clickhouse \
+  --from-literal=username=... \
+  --from-literal=password=...
+```
+
+Create a secret from a file:
+```bash
+kubectl create secret generic clickhouse-secrets \
+  --namespace kafka-clickhouse \
+  --from-file=users.xml=./path/to/users.xml
+```
+
+Or use the helper script (idempotent apply):
+```bash
+scripts/k8s/load_secrets.sh clickhouse-secrets users.xml=secrets/clickhouse/users.xml
+```
+
+Load all project secrets (Kafka, Schema Registry, ClickHouse):
+```bash
+scripts/k8s/load_secrets.sh --all
+```
+
+Template file:
+```
+templates/secrets/clickhouse/users.xml
+```
+
+Sealed-secrets or external secrets can be added later; keep unsealed values out of git.
+
 ## `kubectl` quick lookup
 
 ### Cluster + context
@@ -163,3 +212,9 @@ kubectl apply -k k8s/overlays/local
 ### Troubleshooting
 - `kubectl get events -A --sort-by=.metadata.creationTimestamp` — recent events
 - `kubectl top pods -A` — pod CPU/mem (metrics-server required)
+
+### Secrets (safe inspection)
+- `kubectl get secrets -n kafka-clickhouse` — list secrets in namespace
+- `kubectl describe secret kafka-secrets -n kafka-clickhouse` — metadata only
+- `kubectl get secret clickhouse-secrets -n kafka-clickhouse -o yaml` — full secret (base64 data)
+- `kubectl get secret clickhouse-secrets -n kafka-clickhouse -o jsonpath='{.data.users\\.xml}' | base64 -d` — decode one key

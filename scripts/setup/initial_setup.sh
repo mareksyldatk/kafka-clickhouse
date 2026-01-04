@@ -10,6 +10,7 @@ mkdir -p secrets/kafka secrets/clickhouse
 # Seed local secrets from templates without overwriting existing files.
 cp -n templates/secrets/local.env secrets/local.env
 cp -n templates/secrets/kafka/* secrets/kafka/
+cp -n templates/secrets/clickhouse/* secrets/clickhouse/
 
 # Final reminder for local-only setup.
 echo "Secrets templates copied. Update secrets/local.env with real values."

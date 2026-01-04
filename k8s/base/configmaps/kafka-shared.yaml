@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-shared
+  namespace: kafka-clickhouse
+  labels:
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: kafka-clickhouse
+data: {}

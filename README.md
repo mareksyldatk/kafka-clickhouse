@@ -97,6 +97,10 @@ scripts/k8s/setup_k8s_toolchain_macos.sh
 ```bash
 scripts/k8s/install_ingress_nginx.sh
 ```
+- Load all Kubernetes secrets (from local files):
+```bash
+scripts/k8s/load_secrets.sh --all
+```
 
 
 ## Logs & debugging
