@@ -35,6 +35,11 @@ These version pins align with Amazon EKS standard support versions (1.32-1.34) a
 - helm: https://helm.sh/docs/intro/install/
 
 ## Local workflow scripts
+Install local Kubernetes toolchain (macOS/Homebrew):
+```bash
+scripts/k8s/setup_k8s_toolchain_macos.sh
+```
+
 Create the local cluster:
 ```bash
 scripts/k8s/create_kind_cluster.sh
@@ -48,6 +53,39 @@ scripts/k8s/delete_kind_cluster.sh
 Load local images into the cluster:
 ```bash
 scripts/k8s/load_kind_image.sh <image> [image...]
+```
+
+## Local access strategy (Ingress + port-forward)
+### Ingress (HTTP)
+We use the official `ingress-nginx` Helm chart with a pinned version and NodePort mapping for predictable local access. The chart is pinned to `4.14.1`. 
+
+Install the ingress controller:
+```bash
+scripts/k8s/install_ingress_nginx.sh
+```
+
+Smoke test (after install):
+```bash
+scripts/tests/k8s_smoke_test.sh
+```
+
+Values file:
+```
+k8s/values/ingress-nginx-local.yaml
+```
+
+Local hostnames (example):
+```
+127.0.0.1  kafka.local schema-registry.local clickhouse.local
+```
+Add entries like the above to `/etc/hosts` for any Ingress hostnames you define. No DNS automation is used.
+
+NodePort mappings must be in the standard 30000–32767 range; the local values file pins HTTP/HTTPS to `30080`/`30443`.
+
+### Port-forward (native TCP)
+Use port-forward when you need a native TCP port (e.g., ClickHouse 9000):
+```bash
+kubectl port-forward svc/<service> 9000:9000 -n <namespace>
 ```
 
 ## StorageClass + local volumes

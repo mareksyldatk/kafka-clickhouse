@@ -91,7 +91,11 @@ scripts/setup/setup_python.sh
 ```
 - Install local Kubernetes toolchain (macOS/Homebrew):
 ```bash
-scripts/setup/setup_k8s_toolchain_macos.sh
+scripts/k8s/setup_k8s_toolchain_macos.sh
+```
+- Install ingress-nginx (local HTTP access):
+```bash
+scripts/k8s/install_ingress_nginx.sh
 ```
 
 
