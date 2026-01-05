@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-client
+  namespace: kafka-clickhouse
+  labels:
+    app.kubernetes.io/name: kafka-client
+    app.kubernetes.io/part-of: kafka-clickhouse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kafka-client
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka-client
+        app.kubernetes.io/part-of: kafka-clickhouse
+    spec:
+      containers:
+        - name: kafka-client
+          image: confluentinc/cp-kafka:8.1.1
+          command:
+            - /bin/sh
+            - -c
+            - sleep infinity
+          volumeMounts:
+            - name: kafka-client-config
+              mountPath: /mnt/secrets/kafka-client-config
+              readOnly: true
+      volumes:
+        - name: kafka-client-config
+          secret:
+            secretName: kafka-client-config

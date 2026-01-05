@@ -1,0 +1,47 @@
+apiVersion: platform.confluent.io/v1beta1
+kind: Kafka
+metadata:
+  name: kafka
+  namespace: kafka-clickhouse
+spec:
+  replicas: 3
+  dataVolumeCapacity: 10Gi
+  image:
+    application: confluentinc/cp-server:8.1.1
+    init: confluentinc/confluent-init-container:3.1.1
+  dependencies:
+    kRaftController:
+      clusterRef:
+        name: kraftcontroller
+  configOverrides:
+    server:
+      - default.replication.factor=3
+      - offsets.topic.replication.factor=3
+      - transaction.state.log.replication.factor=3
+      - transaction.state.log.min.isr=2
+      - min.insync.replicas=2
+  listeners:
+    internal:
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: kafka-plain-users
+    external:
+      authentication:
+        type: plain
+        jaasConfig:
+          secretRef: kafka-plain-users
+      externalAccess:
+        type: nodePort
+        nodePort:
+          host: kafka.local
+          nodePortOffset: 30090
+  mountedVolumes:
+    volumes:
+      - name: kafka-client-config
+        secret:
+          secretName: kafka-client-config
+    volumeMounts:
+      - name: kafka-client-config
+        mountPath: /mnt/secrets/kafka-client-config
+        readOnly: true

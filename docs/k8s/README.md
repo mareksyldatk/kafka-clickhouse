@@ -55,48 +55,89 @@ Load local images into the cluster:
 scripts/k8s/load_kind_image.sh <image> [image...]
 ```
 
-## Kafka (Helm)
-Install Kafka (Bitnami chart, KRaft mode):
+## Kafka (Confluent for Kubernetes)
+We deploy Kafka using Confluent for Kubernetes (CFK) with KRaft. This mirrors the CFK quickstart but only includes KRaftController + Kafka.
+
+Install the operator (Helm):
 ```bash
-scripts/k8s/install_kafka.sh
+scripts/k8s/install_cfk_operator.sh
 ```
 
-Values file:
-```
-k8s/values/kafka.yaml
+Ensure the local namespace + StorageClass are applied:
+```bash
+kubectl apply -k k8s/overlays/local
 ```
 
-SASL/PLAIN credentials come from the `kafka-secrets` secret created by `scripts/k8s/load_secrets.sh --all`.
+Make sure secrets are loaded first:
+```bash
+scripts/k8s/load_secrets.sh --all
+```
+
+Apply the Kafka + KRaftController manifests:
+```bash
+scripts/k8s/apply_cfk_kafka.sh
+```
+
+Manifests:
+```
+k8s/base/confluent/
+```
+
+SASL/PLAIN credentials come from the `kafka-plain-users` secret created by:
+```bash
+scripts/k8s/load_secrets.sh --all
+```
 
 Version pins:
-- Chart: `bitnami/kafka` `32.4.3`
-- App: `4.0.0`
+- Operator chart: `confluentinc/confluent-for-kubernetes` `0.1351.59`
+- Operator app: `3.1.1`
+- Confluent Platform (Kafka): `8.1.1`
 
 Local listener (NodePort, broker external access):
-- `127.0.0.1:30092`
-- `127.0.0.1:30093`
-- `127.0.0.1:30094`
+- `kafka.local:30090` (bootstrap)
+- `kafka.local:30091` (broker 0)
+- `kafka.local:30092` (broker 1)
+- `kafka.local:30093` (broker 2)
 
-If you add an HTTP UI later, use `kafka.local` and add it to `/etc/hosts`.
+Add to `/etc/hosts`:
+```
+127.0.0.1  kafka.local
+```
+
+NodePort offsets must stay within the 30000–32767 range; `30090` keeps all broker ports in range.
 
 ### Kafka health check
 ```bash
-kubectl get pods -n kafka-clickhouse -l app.kubernetes.io/name=kafka
-kubectl wait --for=condition=Ready pod -n kafka-clickhouse -l app.kubernetes.io/name=kafka --timeout=300s
+kubectl get kafka -n kafka-clickhouse
+kubectl get pods -n kafka-clickhouse
 ```
 
 ### Kafka CLI smoke test (client.properties)
-The Kafka client config is mounted into broker pods at:
+The Kafka client config is mounted into the `kafka-client` helper pod at:
 ```
-/opt/bitnami/kafka/config/k8s-secrets/client.properties
+/mnt/secrets/kafka-client-config/client.properties
+```
+The `kafka-client` deployment is for local CLI tests only.
+Reminder: update `secrets/local.env` with real values before running the smoke test.
+
+List topics:
+```bash
+kubectl exec -n kafka-clickhouse deploy/kafka-client -- \
+  kafka-topics \
+  --bootstrap-server kafka:9092 \
+  --command-config /mnt/secrets/kafka-client-config/client.properties \
+  --list
 ```
 
-List topics (from broker 0):
+Host-side smoke test (Docker client + NodePort):
 ```bash
-kubectl exec -n kafka-clickhouse kafka-broker-0 -- \
-  kafka-topics.sh \
-  --bootstrap-server kafka-broker-headless:9092 \
-  --command-config /opt/bitnami/kafka/config/k8s-secrets/client.properties \
+docker run --rm \
+  --add-host kafka.local:host-gateway \
+  -v "$(pwd)/secrets/kafka/client.properties:/etc/kafka/client.properties:ro" \
+  confluentinc/cp-kafka:8.1.1 \
+  kafka-topics \
+  --bootstrap-server kafka.local:30090 \
+  --command-config /etc/kafka/client.properties \
   --list
 ```
 
@@ -190,18 +231,18 @@ This creates the `kafka-clickhouse` namespace with common labels/annotations and
 
 ## Secrets (local injection)
 Secrets are created locally and are never committed to git. Use a consistent naming scheme:
-- `kafka-secrets`
-- `schema-registry-secrets`
+- `kafka-plain-users`
+- `kafka-client-config`
 - `clickhouse-secrets`
 
 After updating `secrets/local.env`, re-run `scripts/setup/initial_setup.sh` to render the Kafka secret files under `secrets/kafka/`.
 
-Create a secret from literals (dev only):
+Create Kafka SASL secrets from files:
 ```bash
-kubectl create secret generic kafka-secrets \
+kubectl create secret generic kafka-plain-users \
   --namespace kafka-clickhouse \
-  --from-literal=username=... \
-  --from-literal=password=...
+  --from-file=plain-users.json=secrets/kafka/plain-users.json \
+  --from-file=plain-interbroker.txt=secrets/kafka/plain-interbroker.txt
 ```
 
 Create a secret from a file:
@@ -213,18 +254,15 @@ kubectl create secret generic clickhouse-secrets \
 
 Or use the helper script (idempotent apply):
 ```bash
-scripts/k8s/load_secrets.sh clickhouse-secrets users.xml=secrets/clickhouse/users.xml
-```
-
-Load all project secrets (Kafka, Schema Registry, ClickHouse):
-```bash
 scripts/k8s/load_secrets.sh --all
 ```
 
-Kafka SASL files (used by the Helm chart secret):
-- `secrets/kafka/client-passwords` (comma-separated, order must match `k8s/values/kafka.yaml` client users)
-- `secrets/kafka/inter-broker-password`
-- `secrets/kafka/controller-password`
+Kafka SASL files (used by CFK):
+- `secrets/kafka/plain-users.json`
+- `secrets/kafka/plain-interbroker.txt`
+- `secrets/kafka/client.properties`
+`plain-users.json` is a JSON map of `username: password` pairs.
+`plain-interbroker.txt` provides the inter-broker username/password used by Kafka.
 
 Template file:
 ```
@@ -267,6 +305,6 @@ Sealed-secrets or external secrets can be added later; keep unsealed values out 
 
 ### Secrets (safe inspection)
 - `kubectl get secrets -n kafka-clickhouse` — list secrets in namespace
-- `kubectl describe secret kafka-secrets -n kafka-clickhouse` — metadata only
+- `kubectl describe secret kafka-plain-users -n kafka-clickhouse` — metadata only
 - `kubectl get secret clickhouse-secrets -n kafka-clickhouse -o yaml` — full secret (base64 data)
 - `kubectl get secret clickhouse-secrets -n kafka-clickhouse -o jsonpath='{.data.users\\.xml}' | base64 -d` — decode one key

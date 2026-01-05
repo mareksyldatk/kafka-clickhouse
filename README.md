@@ -101,9 +101,13 @@ scripts/k8s/install_ingress_nginx.sh
 ```bash
 scripts/k8s/load_secrets.sh --all
 ```
-- Install Kafka on Kubernetes (Helm):
+- Install Confluent for Kubernetes operator (Helm):
 ```bash
-scripts/k8s/install_kafka.sh
+scripts/k8s/install_cfk_operator.sh
+```
+- Apply Kafka (KRaft) manifests:
+```bash
+scripts/k8s/apply_cfk_kafka.sh
 ```
 
 

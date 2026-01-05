@@ -120,20 +120,20 @@ Adopt a consistent secret naming scheme (e.g., kafka-secrets, clickhouse-secrets
 ### Commit 7 — Deploy Kafka (KRaft) via Helm
 **Prompt**
 ```text
-Deploy Kafka using a Helm chart (Bitnami or equivalent) in KRaft mode.
+Deploy Kafka using Confluent for Kubernetes (CFK) in KRaft mode.
 Match the Compose topology: 3 controllers + 3 brokers, replication factor = 3.
 Enable SASL/PLAIN with secrets provided out-of-repo.
 Expose a local listener via the chosen access strategy.
 If HTTP UIs are added, define Ingress hostnames (kafka.local) and add /etc/hosts examples.
 Document a health check and a CLI smoke test using mounted client.properties.
 Pin chart/app versions and record them in docs/k8s/README.md.
-Recommended chart: bitnami/kafka with values in k8s/values/kafka.yaml.
+Recommended path: CFK operator (Helm) + KRaftController/Kafka CRs in k8s/base/confluent/.
 ```
 **Why**
 - Helm is the local standard for reproducible deployments.
 - KRaft avoids ZooKeeper even in K8s.
 - Keeps security parity with Step II.
- - Helm charts used locally should be compatible with EKS defaults.
+- Helm charts used locally should be compatible with EKS defaults.
 
 ### Commit 8 — Deploy Schema Registry (JSON Schema)
 **Prompt**

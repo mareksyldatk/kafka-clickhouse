@@ -31,11 +31,8 @@ if [[ "$1" == "--all" ]]; then
   }
 
   require_file "secrets/kafka/client.properties"
-  require_file "secrets/kafka/client_jaas.conf"
-  require_file "secrets/kafka/broker_jaas.conf"
-  require_file "secrets/kafka/client-passwords"
-  require_file "secrets/kafka/inter-broker-password"
-  require_file "secrets/kafka/controller-password"
+  require_file "secrets/kafka/plain-users.json"
+  require_file "secrets/kafka/plain-interbroker.txt"
   require_file "secrets/clickhouse/users.xml"
 
   if [[ "${#missing_files[@]}" -gt 0 ]]; then
@@ -45,20 +42,15 @@ if [[ "$1" == "--all" ]]; then
     exit 1
   fi
 
-  kubectl create secret generic kafka-secrets \
+  kubectl create secret generic kafka-plain-users \
     --namespace "${NAMESPACE}" \
-    --from-file=client.properties=secrets/kafka/client.properties \
-    --from-file=client_jaas.conf=secrets/kafka/client_jaas.conf \
-    --from-file=broker_jaas.conf=secrets/kafka/broker_jaas.conf \
-    --from-file=client-passwords=secrets/kafka/client-passwords \
-    --from-file=inter-broker-password=secrets/kafka/inter-broker-password \
-    --from-file=controller-password=secrets/kafka/controller-password \
+    --from-file=plain-users.json=secrets/kafka/plain-users.json \
+    --from-file=plain-interbroker.txt=secrets/kafka/plain-interbroker.txt \
     --dry-run=client -o yaml | kubectl apply -f -
 
-  kubectl create secret generic schema-registry-secrets \
+  kubectl create secret generic kafka-client-config \
     --namespace "${NAMESPACE}" \
     --from-file=client.properties=secrets/kafka/client.properties \
-    --from-file=client_jaas.conf=secrets/kafka/client_jaas.conf \
     --dry-run=client -o yaml | kubectl apply -f -
 
   kubectl create secret generic clickhouse-secrets \
@@ -67,8 +59,8 @@ if [[ "$1" == "--all" ]]; then
     --dry-run=client -o yaml | kubectl apply -f -
 
   echo "Secrets applied in namespace '${NAMESPACE}':"
-  echo "  - kafka-secrets"
-  echo "  - schema-registry-secrets"
+  echo "  - kafka-plain-users"
+  echo "  - kafka-client-config"
   echo "  - clickhouse-secrets"
   exit 0
 fi
